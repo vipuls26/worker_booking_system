@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Booking;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin \App\Models\Booking
+ * @mixin Booking
  */
 class BookingResource extends JsonResource
 {
@@ -24,13 +25,21 @@ class BookingResource extends JsonResource
             'service' => new ServiceResource($this->whenLoaded('service')),
             'booking_date' => $this->booking_date?->toDateString(),
             'booking_time' => $this->booking_time,
+            'start_time' => $this->start_time ?: $this->booking_time,
+            'end_time' => $this->end_time,
             'address' => $this->address,
             'notes' => $this->notes,
+            'issue_description' => $this->issue_description ?: $this->notes,
             'total_amount' => $this->total_amount,
             'status' => $this->status,
             'cancelled_by' => $this->cancelled_by,
             'cancelled_by_user' => new UserResource($this->whenLoaded('cancelledBy')),
             'cancelled_reason' => $this->cancelled_reason,
+            'rejection_reason' => $this->rejection_reason,
+            'requests' => BookingRequestResource::collection($this->whenLoaded('bookingRequests')),
+            'timeline' => BookingActivityResource::collection($this->whenLoaded('activities')),
+            'review' => new ReviewResource($this->whenLoaded('review')),
+            'worker_review' => new ReviewResource($this->whenLoaded('workerReview')),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

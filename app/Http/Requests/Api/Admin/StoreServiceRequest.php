@@ -6,6 +6,11 @@ use App\Http\Requests\Api\ApiFormRequest;
 
 class StoreServiceRequest extends ApiFormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->normalizeBoolean('is_active');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -17,5 +22,18 @@ class StoreServiceRequest extends ApiFormRequest
             'icon' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
         ];
+    }
+
+    private function normalizeBoolean(string $key): void
+    {
+        if (! $this->has($key)) {
+            return;
+        }
+
+        $value = filter_var($this->input($key), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($value !== null) {
+            $this->merge([$key => $value]);
+        }
     }
 }

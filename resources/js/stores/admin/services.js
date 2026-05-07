@@ -3,11 +3,11 @@ import * as serviceApi from '../../api/admin/services';
 
 function activeParam(value) {
     if (value === 'active') {
-        return true;
+        return 1;
     }
 
     if (value === 'inactive') {
-        return false;
+        return 0;
     }
 
     return undefined;

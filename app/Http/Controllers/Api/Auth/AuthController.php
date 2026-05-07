@@ -11,7 +11,9 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\AuthService;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -123,9 +125,57 @@ class AuthController extends Controller
         ]);
     }
 
+    public function sendVerificationEmail(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Account already verified',
+                'data' => [
+                    'user' => new UserResource($user->load(['role', 'customerProfile', 'workerProfile', 'workerVerification'])),
+                ],
+            ]);
+        }
+
+        $user->sendEmailVerificationNotification();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification link sent to your email',
+            'data' => [],
+        ]);
+    }
+
+    public function verifyEmail(Request $request, int $id, string $hash): JsonResponse|RedirectResponse
+    {
+        $user = User::query()->findOrFail($id);
+
+        abort_unless(hash_equals((string) $hash, sha1($user->getEmailForVerification())), 403);
+
+        if (! $user->hasVerifiedEmail() && $user->markEmailAsVerified()) {
+            event(new Verified($user));
+        }
+
+        $user->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Email verified successfully',
+                'data' => [
+                    'user' => new UserResource($user),
+                ],
+            ]);
+        }
+
+        return redirect('/email/verified');
+    }
+
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->load('role');
+        $user = $request->user()->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
 
         return response()->json([
             'success' => true,

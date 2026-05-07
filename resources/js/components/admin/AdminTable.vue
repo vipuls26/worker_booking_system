@@ -1,4 +1,6 @@
 <script setup>
+import SkeletonTableRows from '../common/SkeletonTableRows.vue';
+
 defineProps({
     columns: {
         type: Array,
@@ -32,9 +34,7 @@ defineProps({
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-white/10">
-                    <tr v-if="loading">
-                        <td :colspan="columns.length + 1" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading...</td>
-                    </tr>
+                    <SkeletonTableRows v-if="loading" :columns="columns.length" />
                     <slot v-else />
                 </tbody>
             </table>

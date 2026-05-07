@@ -34,7 +34,7 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Booking retrieved',
-            'data' => ['booking' => new BookingResource($booking->load(['customer.role', 'worker.role', 'service', 'cancelledBy.role']))],
+            'data' => ['booking' => new BookingResource($booking->load(['customer.role', 'worker.role', 'service', 'cancelledBy.role', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']))],
         ]);
     }
 

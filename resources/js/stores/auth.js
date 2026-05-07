@@ -17,6 +17,11 @@ export const useAuthStore = defineStore('auth', {
     getters: {
         isAuthenticated: (state) => Boolean(state.token && state.user),
         role: (state) => state.user?.role?.slug,
+        isBlocked: (state) => Boolean(state.user?.is_blocked),
+        isEmailVerified: (state) => Boolean(state.user?.email_verified_at),
+        isPlatformVerified: (state) => Boolean(state.user?.is_admin_verified),
+        isVerified: (state) => Boolean(state.user?.email_verified_at && state.user?.is_admin_verified),
+        verificationStatus: (state) => state.user?.verification_status || 'pending',
         dashboardPath: (state) => dashboardByRole[state.user?.role?.slug] || '/login',
     },
 
@@ -42,14 +47,31 @@ export const useAuthStore = defineStore('auth', {
             }
 
             try {
-                const response = await authApi.me();
-                this.user = response.data.data.user;
-                localStorage.setItem('auth_user', JSON.stringify(this.user));
+                await this.refreshUser();
             } catch {
                 this.clearSession();
             } finally {
                 this.isBootstrapped = true;
             }
+        },
+
+        setUser(user) {
+            this.user = user;
+            localStorage.setItem('auth_user', JSON.stringify(user));
+        },
+
+        async refreshUser() {
+            const response = await authApi.me();
+            this.setUser(response.data.data.user);
+
+            return response.data;
+        },
+
+        async updateProfile(payload) {
+            const response = await authApi.updateProfile(payload);
+            this.setUser(response.data.data.user);
+
+            return response.data;
         },
 
         async register(payload) {
@@ -74,6 +96,24 @@ export const useAuthStore = defineStore('auth', {
 
         async resetPassword(payload) {
             const response = await authApi.resetPassword(payload);
+
+            return response.data;
+        },
+
+        async sendVerificationEmail() {
+            const response = await authApi.sendVerificationEmail();
+
+            return response.data;
+        },
+
+        async fetchUnblockRequest() {
+            const response = await authApi.unblockRequest();
+
+            return response.data;
+        },
+
+        async submitUnblockRequest(payload) {
+            const response = await authApi.submitUnblockRequest(payload);
 
             return response.data;
         },

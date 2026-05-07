@@ -2,12 +2,12 @@
 
 namespace App\Http\Resources;
 
+use App\Models\WorkerVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 /**
- * @mixin \App\Models\WorkerVerification
+ * @mixin WorkerVerification
  */
 class WorkerVerificationResource extends JsonResource
 {
@@ -23,7 +23,13 @@ class WorkerVerificationResource extends JsonResource
             'user_id' => $this->user_id,
             'worker' => new UserResource($this->whenLoaded('user')),
             'id_proof' => $this->id_proof,
-            'id_proof_url' => $this->id_proof ? Storage::url($this->id_proof) : null,
+            'id_proof_url' => $this->id_proof ? '/storage/'.ltrim($this->id_proof, '/') : null,
+            'certificates' => collect($this->certificates ?? [])
+                ->map(fn (string $path): array => [
+                    'path' => $path,
+                    'url' => '/storage/'.ltrim($path, '/'),
+                ])
+                ->values(),
             'experience_years' => $this->experience_years,
             'mobile_verified' => $this->mobile_verified,
             'status' => $this->status,

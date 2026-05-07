@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'id_proof', 'experience_years', 'mobile_verified', 'status', 'rejection_reason', 'verified_by', 'verified_at'])]
+#[Fillable(['user_id', 'id_proof', 'certificates', 'experience_years', 'mobile_verified', 'status', 'rejection_reason', 'verified_by', 'verified_at'])]
 class WorkerVerification extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -16,6 +16,8 @@ class WorkerVerification extends Model
     public const STATUS_APPROVED = 'approved';
 
     public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_RESUBMISSION_REQUESTED = 'resubmission_requested';
 
     /** @use HasFactory<WorkerVerificationFactory> */
     use HasFactory;
@@ -44,6 +46,7 @@ class WorkerVerification extends Model
         return [
             'experience_years' => 'integer',
             'mobile_verified' => 'boolean',
+            'certificates' => 'array',
             'verified_at' => 'datetime',
         ];
     }

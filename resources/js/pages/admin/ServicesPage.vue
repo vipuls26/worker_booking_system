@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import ServiceFormModal from '../../components/admin/ServiceFormModal.vue';
 import ServicesTable from '../../components/admin/ServicesTable.vue';
+import AppPanel from '../../components/common/AppPanel.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
@@ -106,7 +107,7 @@ onMounted(() => load());
                 </button>
             </div>
 
-            <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <AppPanel>
                 <div class="grid gap-3 lg:grid-cols-[1fr_220px]">
                     <SearchFilter v-model="servicesStore.filters.search" placeholder="Search by name, slug, or description" @search="load()" />
                     <select
@@ -119,7 +120,7 @@ onMounted(() => load());
                         <option value="inactive">Inactive</option>
                     </select>
                 </div>
-            </section>
+            </AppPanel>
 
             <ServicesTable
                 :services="servicesStore.services"

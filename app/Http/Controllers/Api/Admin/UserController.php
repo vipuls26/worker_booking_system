@@ -34,7 +34,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User retrieved',
-            'data' => ['user' => new UserResource($user->load('role'))],
+            'data' => ['user' => new UserResource($user->load(['role', 'customerProfile']))],
         ]);
     }
 
@@ -64,6 +64,36 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User unblocked',
+            'data' => ['user' => new UserResource($user)],
+        ]);
+    }
+
+    public function verify(User $user): JsonResponse
+    {
+        try {
+            $user = $this->users->verify($user);
+        } catch (ValidationException $exception) {
+            return $this->validationError('Unable to verify user', $exception);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User verified',
+            'data' => ['user' => new UserResource($user)],
+        ]);
+    }
+
+    public function unverify(User $user): JsonResponse
+    {
+        try {
+            $user = $this->users->unverify($user);
+        } catch (ValidationException $exception) {
+            return $this->validationError('Unable to unverify user', $exception);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User verification removed',
             'data' => ['user' => new UserResource($user)],
         ]);
     }

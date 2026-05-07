@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin \App\Models\User
+ * @mixin User
  */
 class UserResource extends JsonResource
 {
@@ -22,10 +23,41 @@ class UserResource extends JsonResource
             'role_id' => $this->role_id,
             'name' => $this->name,
             'email' => $this->email,
+            'email_verified_at' => $this->email_verified_at?->toISOString(),
             'phone' => $this->phone,
+            'address' => $this->relationLoaded('customerProfile') ? $this->customerProfile?->address : null,
             'is_blocked' => $this->is_blocked,
+            'is_admin_verified' => (bool) $this->is_verified,
+            'is_verified' => $this->isPlatformVerified(),
+            'verification_status' => $this->verificationStatus(),
             'role' => new RoleResource($this->whenLoaded('role')),
             'created_at' => $this->created_at?->toISOString(),
         ];
+    }
+
+    private function isPlatformVerified(): bool
+    {
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
+        return (bool) $this->is_verified;
+    }
+
+    private function verificationStatus(): string
+    {
+        if ($this->email_verified_at === null) {
+            return 'email_pending';
+        }
+
+        if (! $this->isPlatformVerified()) {
+            return 'platform_pending';
+        }
+
+        if ($this->hasRole('worker') && $this->relationLoaded('workerProfile') && ! $this->workerProfile?->is_verified) {
+            return 'worker_pending';
+        }
+
+        return 'verified';
     }
 }

@@ -23,6 +23,8 @@ class BookingFilter
 
                 $query->where(function (Builder $query) use ($search): void {
                     $query->where('address', 'like', "%{$search}%")
+                        ->orWhere('issue_description', 'like', "%{$search}%")
+                        ->orWhere('notes', 'like', "%{$search}%")
                         ->orWhereHas('customer', fn (Builder $userQuery): Builder => $userQuery->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
                         ->orWhereHas('worker', fn (Builder $userQuery): Builder => $userQuery->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
                         ->orWhereHas('service', fn (Builder $serviceQuery): Builder => $serviceQuery->where('name', 'like', "%{$search}%"));

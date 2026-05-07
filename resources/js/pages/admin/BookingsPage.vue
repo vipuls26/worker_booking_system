@@ -7,6 +7,7 @@ import PaginationControls from '../../components/admin/PaginationControls.vue';
 import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import FormTextarea from '../../components/forms/FormTextarea.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
@@ -21,6 +22,8 @@ const statusOptions = [
     { id: '', name: 'All statuses' },
     { id: 'pending', name: 'Pending' },
     { id: 'accepted', name: 'Accepted' },
+    { id: 'rejected', name: 'Rejected' },
+    { id: 'in_progress', name: 'In progress' },
     { id: 'completed', name: 'Completed' },
     { id: 'cancelled', name: 'Cancelled' },
 ];
@@ -61,6 +64,7 @@ onMounted(load);
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ booking.service?.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ booking.customer?.name }} -> {{ booking.worker?.name }}</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ booking.booking_date }} {{ booking.start_time }} - {{ booking.end_time }}</p>
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">₹{{ booking.total_amount }}</td>
                     <td class="px-4 py-3"><StatusBadge :value="booking.status" /></td>
@@ -75,7 +79,7 @@ onMounted(load);
         <div v-if="cancelling" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="cancel">
                 <h2 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h2>
-                <textarea v-model="cancelReason" required rows="4" class="block w-full rounded-md border-gray-300 dark:border-white/10 dark:bg-gray-950 dark:text-white" placeholder="Cancellation reason"></textarea>
+                <FormTextarea id="admin_booking_cancel_reason" v-model="cancelReason" label="Cancellation reason" required />
                 <AppButton type="submit" icon="pi-times">Cancel booking</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="cancelling = null">Close</button>
             </form>

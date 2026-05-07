@@ -59,4 +59,17 @@ class WorkerVerificationController extends Controller
             ],
         ]);
     }
+
+    public function requestResubmission(RejectWorkerVerificationRequest $request, WorkerVerification $workerVerification): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Worker verification resubmission requested',
+            'data' => [
+                'verification' => new WorkerVerificationResource(
+                    $this->verifications->requestResubmission($workerVerification, $request->user(), $request->string('rejection_reason')->toString()),
+                ),
+            ],
+        ]);
+    }
 }

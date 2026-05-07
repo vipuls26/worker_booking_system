@@ -25,7 +25,7 @@ async function submit() {
     try {
         await authStore.login(form);
         toast.success('Login successful');
-        await router.push(authStore.dashboardPath);
+        await router.push(authStore.isBlocked ? '/account/blocked' : authStore.dashboardPath);
     } catch (error) {
         setApiError(error);
         toast.error(error.response?.data?.message || 'Login failed');

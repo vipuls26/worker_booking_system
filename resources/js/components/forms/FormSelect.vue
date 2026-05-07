@@ -1,4 +1,7 @@
 <script setup>
+import FormError from './FormError.vue';
+import FormLabel from './FormLabel.vue';
+
 defineProps({
     id: {
         type: String,
@@ -39,7 +42,7 @@ defineEmits(['update:modelValue']);
 
 <template>
     <div>
-        <label :for="id" class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{ label }}</label>
+        <FormLabel :for-id="id">{{ label }}</FormLabel>
         <select
             :id="id"
             :value="modelValue"
@@ -51,6 +54,6 @@ defineEmits(['update:modelValue']);
                 {{ option[optionLabel] }}
             </option>
         </select>
-        <p v-if="error.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ error[0] }}</p>
+        <FormError :error="error" />
     </div>
 </template>

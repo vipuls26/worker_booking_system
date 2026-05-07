@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WorkerVerification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WorkerVerificationManagementService
 {
@@ -21,25 +22,65 @@ class WorkerVerificationManagementService
 
     public function approve(WorkerVerification $verification, User $admin): WorkerVerification
     {
-        $verification->update([
-            'status' => WorkerVerification::STATUS_APPROVED,
-            'rejection_reason' => null,
-            'verified_by' => $admin->id,
-            'verified_at' => now(),
-        ]);
+        return DB::transaction(function () use ($verification, $admin): WorkerVerification {
+            $verification->loadMissing('user.role');
+            $worker = $verification->user;
 
-        return $verification->refresh()->load(['user.role', 'verifier.role']);
+            $verification->update([
+                'status' => WorkerVerification::STATUS_APPROVED,
+                'rejection_reason' => null,
+                'verified_by' => $admin->id,
+                'verified_at' => now(),
+            ]);
+
+            if ($worker) {
+                $worker->update(['is_verified' => true]);
+            }
+
+            $worker
+                ?->workerProfile()
+                ->updateOrCreate(['user_id' => $verification->user_id], [
+                    'experience_years' => $verification->experience_years,
+                    'is_verified' => true,
+                ]);
+
+            return $verification->refresh()->load(['user.role', 'verifier.role']);
+        });
     }
 
     public function reject(WorkerVerification $verification, User $admin, string $reason): WorkerVerification
     {
-        $verification->update([
-            'status' => WorkerVerification::STATUS_REJECTED,
-            'rejection_reason' => $reason,
-            'verified_by' => $admin->id,
-            'verified_at' => now(),
-        ]);
+        return $this->markNeedsChanges($verification, $admin, $reason, WorkerVerification::STATUS_REJECTED);
+    }
 
-        return $verification->refresh()->load(['user.role', 'verifier.role']);
+    public function requestResubmission(WorkerVerification $verification, User $admin, string $reason): WorkerVerification
+    {
+        return $this->markNeedsChanges($verification, $admin, $reason, WorkerVerification::STATUS_RESUBMISSION_REQUESTED);
+    }
+
+    private function markNeedsChanges(WorkerVerification $verification, User $admin, string $reason, string $status): WorkerVerification
+    {
+        return DB::transaction(function () use ($verification, $admin, $reason, $status): WorkerVerification {
+            $verification->loadMissing('user.role');
+            $worker = $verification->user;
+
+            $verification->update([
+                'status' => $status,
+                'rejection_reason' => $reason,
+                'verified_by' => $admin->id,
+                'verified_at' => now(),
+            ]);
+
+            $worker?->forceFill(['is_verified' => false])->save();
+
+            $worker
+                ?->workerProfile()
+                ->updateOrCreate(['user_id' => $verification->user_id], [
+                    'experience_years' => $verification->experience_years,
+                    'is_verified' => false,
+                ]);
+
+            return $verification->refresh()->load(['user.role', 'verifier.role']);
+        });
     }
 }

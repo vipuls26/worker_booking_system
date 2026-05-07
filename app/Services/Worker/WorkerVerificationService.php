@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Services\Worker;
+
+use App\Models\User;
+use App\Models\WorkerVerification;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+
+class WorkerVerificationService
+{
+    public function get(User $worker): ?WorkerVerification
+    {
+        return WorkerVerification::query()
+            ->where('user_id', $worker->id)
+            ->with(['user.role', 'verifier.role'])
+            ->first();
+    }
+
+    /**
+     * @param  array{id_proof: UploadedFile, certificates?: array<int, UploadedFile>, experience_years: int, mobile_verified?: bool}  $data
+     */
+    public function submit(User $worker, array $data): WorkerVerification
+    {
+        return DB::transaction(function () use ($worker, $data): WorkerVerification {
+            $verification = WorkerVerification::query()->firstOrNew(['user_id' => $worker->id]);
+
+            if ($verification->exists && $verification->status === WorkerVerification::STATUS_APPROVED) {
+                throw ValidationException::withMessages([
+                    'verification' => ['Your worker profile is already verified.'],
+                ]);
+            }
+
+            if ($verification->exists && $verification->id_proof) {
+                Storage::disk('public')->delete($verification->id_proof);
+            }
+
+            collect($verification->certificates ?? [])
+                ->filter()
+                ->each(fn (string $path): bool => Storage::disk('public')->delete($path));
+
+            $idProofPath = $data['id_proof']->store("worker-verifications/{$worker->id}", 'public');
+            $certificatePaths = collect($data['certificates'] ?? [])
+                ->filter(fn (mixed $certificate): bool => $certificate instanceof UploadedFile)
+                ->map(fn (UploadedFile $certificate): string => $certificate->store("worker-verifications/{$worker->id}/certificates", 'public'))
+                ->values()
+                ->all();
+
+            $verification->fill([
+                'id_proof' => $idProofPath,
+                'certificates' => $certificatePaths,
+                'experience_years' => $data['experience_years'],
+                'mobile_verified' => $data['mobile_verified'] ?? false,
+                'status' => WorkerVerification::STATUS_PENDING,
+                'rejection_reason' => null,
+                'verified_by' => null,
+                'verified_at' => null,
+            ])->save();
+
+            $worker->workerProfile()->updateOrCreate(['user_id' => $worker->id], [
+                'experience_years' => $data['experience_years'],
+                'is_verified' => false,
+            ]);
+
+            return $verification->refresh()->load(['user.role', 'verifier.role']);
+        });
+    }
+}

@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser } from '../../api/admin';
+import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, unverifyAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
 import PaginationControls from '../../components/admin/PaginationControls.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
@@ -41,6 +41,16 @@ async function toggleBlock(user) {
     await load(meta.value.current_page || 1);
 }
 
+async function toggleVerify(user) {
+    try {
+        user.is_admin_verified ? await unverifyAdminUser(user.id) : await verifyAdminUser(user.id);
+        toast.success(user.is_admin_verified ? 'User verification removed' : 'User verified');
+        await load(meta.value.current_page || 1);
+    } catch (error) {
+        toast.error(error.response?.data?.message || 'Unable to update verification');
+    }
+}
+
 async function confirmDelete() {
     try {
         await deleteAdminUser(deleting.value.id);
@@ -62,16 +72,28 @@ onMounted(load);
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
                 <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" @update:model-value="load()" />
             </div>
-            <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="users.length > 0">
+            <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email', label: 'Email' }, { key: 'status', label: 'Status' }, { key: 'verified', label: 'Verified' }]" :loading="loading" :has-records="users.length > 0">
                 <tr v-for="user in users" :key="user.id">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ user.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ user.email }}</p>
                     </td>
                     <td class="px-4 py-3 text-sm capitalize text-gray-700 dark:text-gray-200">{{ user.role?.slug }}</td>
+                    <td class="px-4 py-3">
+                        <StatusBadge :value="user.email_verified_at ? 'verified' : 'pending'" />
+                    </td>
                     <td class="px-4 py-3"><StatusBadge :value="user.is_blocked ? 'blocked' : 'active'" /></td>
+                    <td class="px-4 py-3">
+                        <StatusBadge :value="user.is_admin_verified ? 'verified' : 'pending'" />
+                    </td>
                     <td class="px-4 py-3 text-right">
-                        <button class="text-sm font-medium text-gray-900 dark:text-white" @click="toggleBlock(user)">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
+                        <button
+                            class="text-sm font-medium text-gray-900 dark:text-white"
+                            @click="toggleVerify(user)"
+                        >
+                            {{ user.is_admin_verified ? 'Unverify' : 'Verify' }}
+                        </button>
+                        <button class="ml-3 text-sm font-medium text-gray-900 dark:text-white" @click="toggleBlock(user)">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
                         <button class="ml-3 text-sm font-medium text-red-600" @click="deleting = user">Delete</button>
                     </td>
                 </tr>

@@ -1,5 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
+import FormError from './FormError.vue';
+import FormLabel from './FormLabel.vue';
 
 const props = defineProps({
     id: {
@@ -26,6 +28,18 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    min: {
+        type: [String, Number],
+        default: null,
+    },
+    max: {
+        type: [String, Number],
+        default: null,
+    },
+    step: {
+        type: [String, Number],
+        default: null,
+    },
 });
 
 defineEmits(['update:modelValue']);
@@ -37,13 +51,16 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
 
 <template>
     <div>
-        <label :for="id" class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{ label }}</label>
+        <FormLabel :for-id="id">{{ label }}</FormLabel>
         <div class="relative mt-1">
             <input
                 :id="id"
                 :type="inputType"
                 :value="modelValue"
                 :autocomplete="autocomplete"
+                :min="min"
+                :max="max"
+                :step="step"
                 :class="[
                     'block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-white dark:focus:ring-white',
                     isPassword ? 'pr-10' : '',
@@ -60,6 +77,6 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
                 <i :class="['pi', isPasswordVisible ? 'pi-eye-slash' : 'pi-eye']" aria-hidden="true"></i>
             </button>
         </div>
-        <p v-if="error.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ error[0] }}</p>
+        <FormError :error="error" />
     </div>
 </template>

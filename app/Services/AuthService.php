@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -20,7 +21,9 @@ class AuthService
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => $data['password'],
-        ])->load('role');
+        ])->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
+
+        event(new Registered($user));
 
         return [
             'user' => $user,
@@ -37,7 +40,7 @@ class AuthService
     public function login(array $credentials): array
     {
         $user = User::query()
-            ->with('role')
+            ->with(['role', 'customerProfile', 'workerProfile', 'workerVerification'])
             ->where('email', $credentials['email'])
             ->first();
 

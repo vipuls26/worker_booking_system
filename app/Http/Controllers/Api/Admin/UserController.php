@@ -83,21 +83,6 @@ class UserController extends Controller
         ]);
     }
 
-    public function unverify(User $user): JsonResponse
-    {
-        try {
-            $user = $this->users->unverify($user);
-        } catch (ValidationException $exception) {
-            return $this->validationError('Unable to unverify user', $exception);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'User verification removed',
-            'data' => ['user' => new UserResource($user)],
-        ]);
-    }
-
     public function destroy(User $user): JsonResponse
     {
         try {

@@ -70,6 +70,6 @@ class BookingWorkflowNotification extends Notification implements ShouldQueue
             return '/customer/bookings/'.($this->booking->service_request_id ?: $this->booking->id);
         }
 
-        return '/admin/bookings';
+        return '/admin/dashboard';
     }
 }

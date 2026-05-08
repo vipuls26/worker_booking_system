@@ -26,8 +26,8 @@ import AdminServicesPage from '../pages/admin/ServicesPage.vue';
 import AdminWorkerServiceRequestsPage from '../pages/admin/WorkerServiceRequestsPage.vue';
 import AdminUsersPage from '../pages/admin/UsersPage.vue';
 import AdminWorkerVerificationsPage from '../pages/admin/WorkerVerificationsPage.vue';
-import AdminBookingsPage from '../pages/admin/BookingsPage.vue';
 import AdminUnblockRequestsPage from '../pages/admin/UnblockRequestsPage.vue';
+import AdminDisputesPage from '../pages/admin/DisputesPage.vue';
 import AdminAuditLogsPage from '../pages/admin/AuditLogsPage.vue';
 import WorkerAccountPage from '../pages/worker/AccountPage.vue';
 
@@ -83,9 +83,9 @@ const routes = [
         meta: { requiresAuth: true, role: 'admin' },
     },
     {
-        path: '/admin/bookings',
-        name: 'admin.bookings',
-        component: AdminBookingsPage,
+        path: '/admin/disputes',
+        name: 'admin.disputes',
+        component: AdminDisputesPage,
         meta: { requiresAuth: true, role: 'admin' },
     },
     {

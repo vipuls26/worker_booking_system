@@ -12,6 +12,18 @@ export function adminAuditLogs(params = {}) {
     return http.get('/admin/audit-logs', { params });
 }
 
+export function adminDisputes(params = {}) {
+    return http.get('/admin/disputes', { params });
+}
+
+export function adminDispute(id) {
+    return http.get(`/admin/disputes/${id}`);
+}
+
+export function updateAdminDispute(id, payload) {
+    return http.patch(`/admin/disputes/${id}`, payload);
+}
+
 export function adminUserAuditLogs(userId, params = {}) {
     return http.get(`/admin/audit-logs/users/${userId}`, { params });
 }
@@ -64,10 +76,6 @@ export function verifyAdminUser(id) {
     return http.patch(`/admin/users/${id}/verify`);
 }
 
-export function unverifyAdminUser(id) {
-    return http.patch(`/admin/users/${id}/unverify`);
-}
-
 export function deleteAdminUser(id) {
     return http.delete(`/admin/users/${id}`);
 }
@@ -98,12 +106,4 @@ export function rejectWorkerVerification(id, rejection_reason) {
 
 export function requestWorkerVerificationResubmission(id, rejection_reason) {
     return http.patch(`/admin/worker-verifications/${id}/request-resubmission`, { rejection_reason });
-}
-
-export function adminBookings(params = {}) {
-    return http.get('/admin/bookings', { params });
-}
-
-export function cancelAdminBooking(id, cancelled_reason) {
-    return http.patch(`/admin/bookings/${id}/cancel`, { cancelled_reason });
 }

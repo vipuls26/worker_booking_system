@@ -21,7 +21,7 @@ const navigation = [
     { label: 'Users', path: '/admin/users', icon: 'pi-users' },
     { label: 'Unblock Requests', path: '/admin/unblock-requests', icon: 'pi-unlock' },
     { label: 'Verifications', path: '/admin/worker-verifications', icon: 'pi-verified' },
-    { label: 'Bookings', path: '/admin/bookings', icon: 'pi-calendar' },
+    { label: 'Disputes', path: '/admin/disputes', icon: 'pi-exclamation-circle' },
     { label: 'Audit Logs', path: '/admin/audit-logs', icon: 'pi-history' },
 ];
 

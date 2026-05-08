@@ -33,11 +33,24 @@ class UserManagementService
     {
         $this->ensureNotAdmin($user, 'Admin accounts cannot be blocked.');
 
-        $user->update(['is_blocked' => true]);
+        $user->forceFill([
+            'is_blocked' => true,
+            'is_verified' => false,
+            'email_verified_at' => null,
+        ])->save();
 
-        $this->audit->record('admin.user_blocked', request()->user(), $user);
+        if ($user->loadMissing('role')->hasRole('worker')) {
+            $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
+                'is_verified' => false,
+            ]);
+        }
 
-        return $user->refresh()->load(['role', 'customerProfile']);
+        $this->audit->record('admin.user_blocked', request()->user(), $user, [
+            'email_verification_reset' => true,
+            'admin_approval_reset' => true,
+        ]);
+
+        return $user->refresh()->load(['role', 'customerProfile', 'workerProfile']);
     }
 
     public function unblock(User $user): User
@@ -54,6 +67,7 @@ class UserManagementService
     public function verify(User $user): User
     {
         $this->ensureNotAdmin($user, 'Admin accounts cannot be verified from user management.');
+        $this->ensureEmailVerified($user);
         $this->ensureWorkerVerificationApproved($user);
 
         $user->update(['is_verified' => true]);
@@ -65,23 +79,6 @@ class UserManagementService
         }
 
         $this->audit->record('admin.user_verified', request()->user(), $user);
-
-        return $user->refresh()->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
-    }
-
-    public function unverify(User $user): User
-    {
-        $this->ensureNotAdmin($user, 'Admin accounts cannot be unverified from user management.');
-
-        $user->update(['is_verified' => false]);
-
-        if ($user->hasRole('worker')) {
-            $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
-                'is_verified' => false,
-            ]);
-        }
-
-        $this->audit->record('admin.user_unverified', request()->user(), $user);
 
         return $user->refresh()->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
     }
@@ -116,6 +113,17 @@ class UserManagementService
                 'user' => [$message],
             ]);
         }
+    }
+
+    private function ensureEmailVerified(User $user): void
+    {
+        if ($user->hasVerifiedEmail()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'email' => ['User must verify their email before admin approval.'],
+        ]);
     }
 
     private function ensureWorkerVerificationApproved(User $user): void

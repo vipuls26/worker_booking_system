@@ -1,8 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
-import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, unverifyAdminUser, verifyAdminUser } from '../../api/admin';
+import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
 import PaginationControls from '../../components/admin/PaginationControls.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
@@ -63,10 +62,14 @@ async function confirmBlockToggle() {
     }
 }
 
-async function toggleVerify(user) {
+async function verifyUser(user) {
+    if (user.is_admin_verified) {
+        return;
+    }
+
     try {
-        user.is_admin_verified ? await unverifyAdminUser(user.id) : await verifyAdminUser(user.id);
-        toast.success(user.is_admin_verified ? 'User verification removed' : 'User verified');
+        await verifyAdminUser(user.id);
+        toast.success('User verified');
         await load(meta.value.current_page || 1);
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to update verification');
@@ -94,7 +97,7 @@ onMounted(load);
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
                 <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" />
             </div>
-            <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email', label: 'Email' }, { key: 'status', label: 'Status' }, { key: 'verified', label: 'Verified' }]" :loading="loading" :has-records="users.length > 0">
+            <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email_status', label: 'Email status' }, { key: 'account_status', label: 'Account status' }, { key: 'admin_approval', label: 'Admin approval' }]" :loading="loading" :has-records="users.length > 0">
                 <tr v-for="user in users" :key="user.id">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ user.name }}</p>
@@ -102,22 +105,42 @@ onMounted(load);
                     </td>
                     <td class="px-4 py-3 text-sm capitalize text-gray-700 dark:text-gray-200">{{ user.role?.slug }}</td>
                     <td class="px-4 py-3">
-                        <StatusBadge :value="user.email_verified_at ? 'verified' : 'pending'" />
+                        <span
+                            class="inline-flex rounded-full px-2 py-1 text-xs font-medium"
+                            :class="user.email_verified_at
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'"
+                        >
+                            {{ user.email_verified_at ? 'Email verified' : 'Email pending' }}
+                        </span>
                     </td>
                     <td class="px-4 py-3"><StatusBadge :value="user.is_blocked ? 'blocked' : 'active'" /></td>
                     <td class="px-4 py-3">
-                        <StatusBadge :value="user.is_admin_verified ? 'verified' : 'pending'" />
+                        <span
+                            class="inline-flex rounded-full px-2 py-1 text-xs font-medium"
+                            :class="user.is_admin_verified
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'"
+                        >
+                            {{ user.is_admin_verified ? 'Admin approved' : 'Needs approval' }}
+                        </span>
                     </td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex flex-wrap justify-end gap-2">
-                        <button
-                            :class="neutralChip"
-                            @click="toggleVerify(user)"
+                        <span
+                            v-if="!user.is_admin_verified && !user.email_verified_at"
+                            class="inline-flex items-center justify-center rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
                         >
-                            {{ user.is_admin_verified ? 'Unverify' : 'Verify' }}
+                            Waiting email
+                        </span>
+                        <button
+                            v-else-if="!user.is_admin_verified"
+                            :class="neutralChip"
+                            @click="verifyUser(user)"
+                        >
+                            Verify
                         </button>
                         <button :class="neutralChip" @click="blocking = user">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
-                        <RouterLink :class="neutralChip" :to="`/admin/audit-logs?user=${user.id}`">Timeline</RouterLink>
                         <button :class="dangerChip" @click="deleting = user">Delete</button>
                         </div>
                     </td>
@@ -130,7 +153,7 @@ onMounted(load);
             :title="blocking?.is_blocked ? 'Unblock user' : 'Block user'"
             :message="blocking?.is_blocked
                 ? `Allow ${blocking?.name || 'this user'} to access platform features again?`
-                : `Block ${blocking?.name || 'this user'} from protected platform features? They can still login and request unblock.`"
+                : `Block ${blocking?.name || 'this user'} from protected platform features? Email verification and admin approval will both reset. After unblock, they must verify email and wait for admin approval again.`"
             @cancel="blocking = null"
             @confirm="confirmBlockToggle"
         />

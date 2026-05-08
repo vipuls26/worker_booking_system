@@ -3,8 +3,8 @@
 use App\Http\Controllers\Api\Account\ProfileController as AccountProfileController;
 use App\Http\Controllers\Api\Account\UnblockRequestController;
 use App\Http\Controllers\Api\Admin\AuditLogController as AdminAuditLogController;
-use App\Http\Controllers\Api\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Api\Admin\DisputeController as AdminDisputeController;
 use App\Http\Controllers\Api\Admin\RevenueController as AdminRevenueController;
 use App\Http\Controllers\Api\Admin\ServiceController as AdminServiceController;
 use App\Http\Controllers\Api\Admin\UnblockRequestController as AdminUnblockRequestController;
@@ -68,6 +68,7 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
     Route::get('audit-logs', AdminAuditLogController::class);
     Route::get('audit-logs/users/{user}', [AdminAuditLogController::class, 'user']);
     Route::get('audit-logs/bookings/{booking}', [AdminAuditLogController::class, 'booking']);
+    Route::apiResource('disputes', AdminDisputeController::class)->only(['index', 'show', 'update']);
 
     Route::patch('services/{service}/toggle-status', [AdminServiceController::class, 'toggleStatus']);
     Route::apiResource('services', AdminServiceController::class);
@@ -81,7 +82,6 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
     Route::patch('users/{user}/block', [AdminUserController::class, 'block']);
     Route::patch('users/{user}/unblock', [AdminUserController::class, 'unblock']);
     Route::patch('users/{user}/verify', [AdminUserController::class, 'verify']);
-    Route::patch('users/{user}/unverify', [AdminUserController::class, 'unverify']);
     Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
 
     Route::get('unblock-requests', [AdminUnblockRequestController::class, 'index']);
@@ -94,9 +94,6 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
     Route::patch('worker-verifications/{workerVerification}/reject', [AdminWorkerVerificationController::class, 'reject']);
     Route::patch('worker-verifications/{workerVerification}/request-resubmission', [AdminWorkerVerificationController::class, 'requestResubmission']);
 
-    Route::get('bookings', [AdminBookingController::class, 'index']);
-    Route::get('bookings/{booking}', [AdminBookingController::class, 'show']);
-    Route::patch('bookings/{booking}/cancel', [AdminBookingController::class, 'cancel']);
 });
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:worker'])->prefix('worker')->group(function (): void {
     Route::get('dashboard', [DashboardController::class, 'worker']);

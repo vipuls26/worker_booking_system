@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Worker\IndexWorkerBookingsRequest;
 use App\Http\Requests\Api\Worker\RespondBookingRequestRequest;
 use App\Http\Requests\Api\Worker\UpdateBookingStatusRequest;
-use App\Http\Resources\BookingRequestResource;
 use App\Http\Resources\BookingResource;
+use App\Http\Resources\ServiceRequestWorkerResource;
 use App\Models\Booking;
-use App\Models\BookingRequest;
+use App\Models\ServiceRequestWorker;
 use App\Services\Booking\BookingService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +44,7 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Worker booking retrieved',
             'data' => [
-                'booking' => new BookingResource($booking->load(['customer.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])),
+                'booking' => new BookingResource($booking->load(['customer.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])),
             ],
         ]);
     }
@@ -61,13 +61,13 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking requests retrieved',
             'data' => [
-                'booking_requests' => BookingRequestResource::collection($bookingRequests),
+                'booking_requests' => ServiceRequestWorkerResource::collection($bookingRequests),
                 'meta' => PaginationMeta::fromPaginator($bookingRequests),
             ],
         ]);
     }
 
-    public function showRequest(BookingRequest $bookingRequest): JsonResponse
+    public function showRequest(ServiceRequestWorker $bookingRequest): JsonResponse
     {
         $this->ensureRequestOwnedByWorker($bookingRequest);
 
@@ -75,20 +75,20 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking request retrieved',
             'data' => [
-                'booking_request' => new BookingRequestResource(
-                    $bookingRequest->load(['booking.customer.role', 'booking.service', 'worker.role']),
+                'booking_request' => new ServiceRequestWorkerResource(
+                    $bookingRequest->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']),
                 ),
             ],
         ]);
     }
 
-    public function respond(RespondBookingRequestRequest $request, BookingRequest $bookingRequest): JsonResponse
+    public function respond(RespondBookingRequestRequest $request, ServiceRequestWorker $bookingRequest): JsonResponse
     {
         return response()->json([
             'success' => true,
             'message' => 'Booking request updated',
             'data' => [
-                'booking_request' => new BookingRequestResource(
+                'booking_request' => new ServiceRequestWorkerResource(
                     $this->bookings->respondToRequest($bookingRequest, $request->user(), $request->string('status')->toString()),
                 ),
             ],
@@ -115,7 +115,7 @@ class BookingController extends Controller
         abort_if($booking->worker_id !== request()->user()?->id, 404);
     }
 
-    private function ensureRequestOwnedByWorker(BookingRequest $bookingRequest): void
+    private function ensureRequestOwnedByWorker(ServiceRequestWorker $bookingRequest): void
     {
         abort_if($bookingRequest->worker_id !== request()->user()?->id, 404);
     }

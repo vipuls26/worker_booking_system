@@ -22,8 +22,7 @@ const reviewForm = reactive({
 
 const statusOptions = [
     { label: 'All bookings', value: '' },
-    { label: 'Pending', value: 'pending' },
-    { label: 'Accepted', value: 'accepted' },
+    { label: 'Confirmed', value: 'confirmed' },
     { label: 'In progress', value: 'in_progress' },
     { label: 'Completed', value: 'completed' },
     { label: 'Rejected', value: 'rejected' },
@@ -38,7 +37,7 @@ function actionsFor(status) {
         ];
     }
 
-    if (status === 'accepted') {
+    if (['accepted', 'confirmed'].includes(status)) {
         return [{ label: 'Start work', status: 'in_progress', icon: 'pi-play' }];
     }
 

@@ -2,14 +2,14 @@
 
 namespace App\Models;
 
-use Database\Factories\BookingRequestFactory;
+use Database\Factories\ServiceRequestWorkerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['booking_id', 'worker_id', 'status', 'responded_at'])]
-class BookingRequest extends Model
+#[Fillable(['service_request_id', 'worker_id', 'worker_service_id', 'pricing_type', 'quoted_price', 'minimum_hours', 'status', 'responded_at'])]
+class ServiceRequestWorker extends Model
 {
     public const STATUS_PENDING = 'pending';
 
@@ -17,21 +17,19 @@ class BookingRequest extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
-    public const STATUS_CANCELLED = 'cancelled';
-
-    public const STATUS_AUTO_CANCELLED = 'auto_cancelled';
-
     public const STATUS_SELECTED = 'selected';
 
-    /** @use HasFactory<BookingRequestFactory> */
+    public const STATUS_NOT_SELECTED = 'not_selected';
+
+    /** @use HasFactory<ServiceRequestWorkerFactory> */
     use HasFactory;
 
     /**
-     * @return BelongsTo<Booking, $this>
+     * @return BelongsTo<ServiceRequest, $this>
      */
-    public function booking(): BelongsTo
+    public function serviceRequest(): BelongsTo
     {
-        return $this->belongsTo(Booking::class);
+        return $this->belongsTo(ServiceRequest::class);
     }
 
     /**
@@ -43,11 +41,20 @@ class BookingRequest extends Model
     }
 
     /**
+     * @return BelongsTo<WorkerService, $this>
+     */
+    public function workerService(): BelongsTo
+    {
+        return $this->belongsTo(WorkerService::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
+            'quoted_price' => 'decimal:2',
             'responded_at' => 'datetime',
         ];
     }

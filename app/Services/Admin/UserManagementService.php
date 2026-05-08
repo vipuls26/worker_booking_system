@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\User;
 use App\Models\WorkerVerification;
+use App\Services\Audit\AuditLogger;
 use App\Support\Filters\UserFilter;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -11,7 +12,10 @@ use Illuminate\Validation\ValidationException;
 
 class UserManagementService
 {
-    public function __construct(private readonly UserFilter $filter) {}
+    public function __construct(
+        private readonly UserFilter $filter,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function paginate(Request $request): LengthAwarePaginator
     {
@@ -31,6 +35,8 @@ class UserManagementService
 
         $user->update(['is_blocked' => true]);
 
+        $this->audit->record('admin.user_blocked', request()->user(), $user);
+
         return $user->refresh()->load(['role', 'customerProfile']);
     }
 
@@ -39,6 +45,8 @@ class UserManagementService
         $this->ensureNotAdmin($user, 'Admin accounts cannot be unblocked from user management.');
 
         $user->update(['is_blocked' => false]);
+
+        $this->audit->record('admin.user_unblocked', request()->user(), $user);
 
         return $user->refresh()->load(['role', 'customerProfile']);
     }
@@ -56,6 +64,8 @@ class UserManagementService
             ]);
         }
 
+        $this->audit->record('admin.user_verified', request()->user(), $user);
+
         return $user->refresh()->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
     }
 
@@ -70,6 +80,8 @@ class UserManagementService
                 'is_verified' => false,
             ]);
         }
+
+        $this->audit->record('admin.user_unverified', request()->user(), $user);
 
         return $user->refresh()->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
     }
@@ -86,6 +98,10 @@ class UserManagementService
         }
 
         $this->ensureNotAdmin($user, 'Admin accounts cannot be deleted from user management.');
+
+        $this->audit->record('admin.user_deleted', $admin, $user, [
+            'deleted_user_email' => $user->email,
+        ]);
 
         $user->delete();
     }

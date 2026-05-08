@@ -20,7 +20,7 @@ class BookingManagementService
     public function paginate(Request $request): LengthAwarePaginator
     {
         $query = Booking::query()
-            ->with(['customer.role', 'worker.role', 'service', 'cancelledBy.role', 'activities.actor.role', 'review.customer.role'])
+            ->with(['customer.role', 'worker.role', 'selectedWorker.role', 'service', 'cancelledBy.role', 'activities.actor.role', 'review.customer.role'])
             ->latest();
 
         return $this->filter
@@ -32,7 +32,7 @@ class BookingManagementService
     {
         $booking = $this->workflow
             ->transition($booking, Booking::STATUS_CANCELLED, $admin, $reason, ['event' => 'admin_cancelled_booking'])
-            ->load(['customer.role', 'worker.role', 'service', 'cancelledBy.role', 'activities.actor.role', 'review.customer.role']);
+            ->load(['customer.role', 'worker.role', 'selectedWorker.role', 'service', 'cancelledBy.role', 'activities.actor.role', 'review.customer.role']);
 
         $booking->customer?->notify(new BookingWorkflowNotification(
             booking: $booking,

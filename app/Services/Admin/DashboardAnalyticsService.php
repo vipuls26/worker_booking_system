@@ -20,7 +20,9 @@ class DashboardAnalyticsService
             'total_users' => User::query()->count(),
             'total_workers' => User::query()->whereHas('role', fn ($query) => $query->where('slug', 'worker'))->count(),
             'total_bookings' => Booking::query()->count(),
-            'total_revenue' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('total_amount'),
+            'total_revenue' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('platform_commission'),
+            'gross_booking_value' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('total_amount'),
+            'worker_payouts' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('worker_earning'),
             'cards' => $this->cards(),
             'revenue_reports' => [
                 'monthly' => $this->monthlyRevenue(),
@@ -40,7 +42,7 @@ class DashboardAnalyticsService
             ['label' => 'Total users', 'value' => User::query()->count(), 'icon' => 'pi-users'],
             ['label' => 'Total workers', 'value' => User::query()->whereHas('role', fn ($query) => $query->where('slug', 'worker'))->count(), 'icon' => 'pi-briefcase'],
             ['label' => 'Total bookings', 'value' => Booking::query()->count(), 'icon' => 'pi-calendar'],
-            ['label' => 'Revenue', 'value' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('total_amount'), 'icon' => 'pi-indian-rupee'],
+            ['label' => 'Commission revenue', 'value' => (float) Booking::query()->where('status', Booking::STATUS_COMPLETED)->sum('platform_commission'), 'icon' => 'pi-indian-rupee'],
         ];
     }
 
@@ -53,7 +55,7 @@ class DashboardAnalyticsService
 
         return Booking::query()
             ->selectRaw($monthExpression.' as label')
-            ->selectRaw('SUM(total_amount) as value')
+            ->selectRaw('SUM(platform_commission) as value')
             ->where('status', Booking::STATUS_COMPLETED)
             ->whereNotNull('booking_date')
             ->groupBy('label')
@@ -73,7 +75,7 @@ class DashboardAnalyticsService
     {
         return Booking::query()
             ->select('status as label')
-            ->selectRaw('SUM(total_amount) as value')
+            ->selectRaw('SUM(platform_commission) as value')
             ->groupBy('status')
             ->orderByDesc('value')
             ->get()
@@ -108,7 +110,7 @@ class DashboardAnalyticsService
         $serviceStats = Booking::query()
             ->select('service_id')
             ->selectRaw('COUNT(*) as bookings_count')
-            ->selectRaw('SUM(CASE WHEN status = ? THEN total_amount ELSE 0 END) as revenue', [Booking::STATUS_COMPLETED])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN platform_commission ELSE 0 END) as revenue', [Booking::STATUS_COMPLETED])
             ->groupBy('service_id')
             ->orderByDesc('bookings_count')
             ->limit(5)

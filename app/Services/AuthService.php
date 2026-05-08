@@ -3,12 +3,15 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class AuthService
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     /**
      * @param  array{role_id: int, name: string, email: string, phone: string, password: string}  $data
      * @return array{user: User, token: string}
@@ -24,6 +27,10 @@ class AuthService
         ])->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
 
         event(new Registered($user));
+
+        $this->audit->record('auth.registered', $user, $user, [
+            'role' => $user->role?->slug,
+        ]);
 
         return [
             'user' => $user,
@@ -49,6 +56,8 @@ class AuthService
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
+
+        $this->audit->record('auth.login', $user, $user);
 
         return [
             'user' => $user,

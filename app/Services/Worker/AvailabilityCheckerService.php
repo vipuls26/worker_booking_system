@@ -3,6 +3,8 @@
 namespace App\Services\Worker;
 
 use App\Models\Booking;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
 use Carbon\CarbonImmutable;
@@ -78,15 +80,46 @@ class AvailabilityCheckerService
             ->whereDate('booking_date', $date)
             ->whereIn('status', Booking::ActiveStatuses)
             ->get()
-            ->contains(function (Booking $booking) use ($date, $startTime, $endTime): bool {
-                $bookingStart = CarbonImmutable::parse($date.' '.($booking->start_time ?: $booking->booking_time));
-                $bookingEnd = $booking->end_time
-                    ? CarbonImmutable::parse($date.' '.$booking->end_time)
-                    : $bookingStart->addHour();
-                $slotStart = CarbonImmutable::parse($date.' '.$startTime);
-                $slotEnd = CarbonImmutable::parse($date.' '.$endTime);
+            ->contains(fn (Booking $booking): bool => $this->overlaps($booking, $date, $startTime, $endTime))
+            || $this->hasAcceptedRequestOverlap($worker, $date, $startTime, $endTime);
+    }
 
-                return $bookingStart->lessThan($slotEnd) && $bookingEnd->greaterThan($slotStart);
+    private function hasAcceptedRequestOverlap(User $worker, string $date, string $startTime, string $endTime): bool
+    {
+        return ServiceRequestWorker::query()
+            ->where('worker_id', $worker->id)
+            ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
+            ->whereHas('serviceRequest', function ($query) use ($date): void {
+                $query
+                    ->whereDate('requested_date', $date)
+                    ->where('status', ServiceRequest::STATUS_OPEN);
+            })
+            ->with('serviceRequest:id,requested_date,start_time,end_time')
+            ->get()
+            ->contains(function (ServiceRequestWorker $serviceRequestWorker) use ($date, $startTime, $endTime): bool {
+                if ($serviceRequestWorker->serviceRequest === null) {
+                    return false;
+                }
+
+                $booking = new Booking([
+                    'booking_time' => $serviceRequestWorker->serviceRequest->start_time,
+                    'start_time' => $serviceRequestWorker->serviceRequest->start_time,
+                    'end_time' => $serviceRequestWorker->serviceRequest->end_time,
+                ]);
+
+                return $this->overlaps($booking, $date, $startTime, $endTime);
             });
+    }
+
+    private function overlaps(Booking $booking, string $date, string $startTime, string $endTime): bool
+    {
+        $bookingStart = CarbonImmutable::parse($date.' '.($booking->start_time ?: $booking->booking_time));
+        $bookingEnd = $booking->end_time
+            ? CarbonImmutable::parse($date.' '.$booking->end_time)
+            : $bookingStart->addHour();
+        $slotStart = CarbonImmutable::parse($date.' '.$startTime);
+        $slotEnd = CarbonImmutable::parse($date.' '.$endTime);
+
+        return $bookingStart->lessThan($slotEnd) && $bookingEnd->greaterThan($slotStart);
     }
 }

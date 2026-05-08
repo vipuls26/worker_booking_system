@@ -2,6 +2,9 @@
 
 namespace App\Services\Customer;
 
+use App\Models\Booking;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Services\Worker\AvailabilityCheckerService;
 use Carbon\CarbonImmutable;
@@ -167,8 +170,19 @@ class WorkerSearchService
         $query->whereDoesntHave('workerBookings', function ($query) use ($request, $time): void {
             $query
                 ->whereDate('booking_date', $request->string('available_date')->toString())
-                ->whereNot('status', 'cancelled')
+                ->whereIn('status', Booking::ActiveStatuses)
                 ->where('booking_time', $time);
+        });
+
+        $query->whereNotIn('users.id', function ($query) use ($request, $time): void {
+            $query
+                ->select('service_request_workers.worker_id')
+                ->from('service_request_workers')
+                ->join('service_requests', 'service_requests.id', '=', 'service_request_workers.service_request_id')
+                ->where('service_request_workers.status', ServiceRequestWorker::STATUS_ACCEPTED)
+                ->where('service_requests.status', ServiceRequest::STATUS_OPEN)
+                ->whereDate('service_requests.requested_date', $request->string('available_date')->toString())
+                ->where('service_requests.start_time', $time);
         });
     }
 

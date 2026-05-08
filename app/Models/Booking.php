@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['customer_id', 'worker_id', 'service_id', 'booking_date', 'booking_time', 'start_time', 'end_time', 'address', 'notes', 'issue_description', 'total_amount', 'status', 'cancelled_by', 'cancelled_reason', 'rejection_reason'])]
+#[Fillable(['service_request_id', 'customer_id', 'worker_id', 'selected_worker_id', 'service_id', 'booking_date', 'booking_time', 'start_time', 'end_time', 'address', 'notes', 'issue_description', 'total_amount', 'commission_rate', 'platform_commission', 'worker_earning', 'status', 'cancelled_by', 'cancelled_reason', 'rejection_reason'])]
 class Booking extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -18,6 +18,8 @@ class Booking extends Model
     public const STATUS_REQUESTED = 'requested';
 
     public const STATUS_ACCEPTED = 'accepted';
+
+    public const STATUS_CONFIRMED = 'confirmed';
 
     public const STATUS_REJECTED = 'rejected';
 
@@ -27,10 +29,13 @@ class Booking extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    public const DefaultCommissionRate = 10.00;
+
     public const ActiveStatuses = [
         self::STATUS_PENDING,
         self::STATUS_REQUESTED,
         self::STATUS_ACCEPTED,
+        self::STATUS_CONFIRMED,
         self::STATUS_IN_PROGRESS,
     ];
 
@@ -54,11 +59,27 @@ class Booking extends Model
     }
 
     /**
+     * @return BelongsTo<User, $this>
+     */
+    public function selectedWorker(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'selected_worker_id');
+    }
+
+    /**
      * @return BelongsTo<Service, $this>
      */
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * @return BelongsTo<ServiceRequest, $this>
+     */
+    public function serviceRequest(): BelongsTo
+    {
+        return $this->belongsTo(ServiceRequest::class);
     }
 
     /**
@@ -109,6 +130,9 @@ class Booking extends Model
         return [
             'booking_date' => 'date',
             'total_amount' => 'decimal:2',
+            'commission_rate' => 'decimal:2',
+            'platform_commission' => 'decimal:2',
+            'worker_earning' => 'decimal:2',
         ];
     }
 }

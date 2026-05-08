@@ -7,8 +7,8 @@ use App\Http\Requests\Api\Booking\CancelOwnBookingRequest;
 use App\Http\Requests\Api\Customer\IndexCustomerBookingsRequest;
 use App\Http\Requests\Api\Customer\SelectBookingWorkerRequest;
 use App\Http\Requests\Api\Customer\StoreBookingRequest;
-use App\Http\Resources\BookingResource;
-use App\Models\Booking;
+use App\Http\Resources\ServiceRequestResource;
+use App\Models\ServiceRequest;
 use App\Services\Booking\BookingService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
@@ -29,7 +29,7 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Bookings retrieved',
             'data' => [
-                'bookings' => BookingResource::collection($bookings),
+                'bookings' => ServiceRequestResource::collection($bookings),
                 'meta' => PaginationMeta::fromPaginator($bookings),
             ],
         ]);
@@ -41,12 +41,12 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking request sent',
             'data' => [
-                'booking' => new BookingResource($this->bookings->create($request->user(), $request->validated())),
+                'booking' => new ServiceRequestResource($this->bookings->create($request->user(), $request->validated())),
             ],
         ], 201);
     }
 
-    public function show(Booking $booking): JsonResponse
+    public function show(ServiceRequest $booking): JsonResponse
     {
         $this->ensureOwnedByCustomer($booking);
 
@@ -54,25 +54,25 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking retrieved',
             'data' => [
-                'booking' => new BookingResource($booking->load(['worker.role', 'service', 'bookingRequests.worker.role', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])),
+                'booking' => new ServiceRequestResource($booking->load($this->bookings->serviceRequestRelations())),
             ],
         ]);
     }
 
-    public function selectWorker(SelectBookingWorkerRequest $request, Booking $booking): JsonResponse
+    public function selectWorker(SelectBookingWorkerRequest $request, ServiceRequest $booking): JsonResponse
     {
         return response()->json([
             'success' => true,
             'message' => 'Worker selected successfully',
             'data' => [
-                'booking' => new BookingResource(
+                'booking' => new ServiceRequestResource(
                     $this->bookings->selectFinalWorker($booking, $request->user(), $request->integer('booking_request_id')),
                 ),
             ],
         ]);
     }
 
-    public function cancel(CancelOwnBookingRequest $request, Booking $booking): JsonResponse
+    public function cancel(CancelOwnBookingRequest $request, ServiceRequest $booking): JsonResponse
     {
         $this->ensureOwnedByCustomer($booking);
 
@@ -80,14 +80,14 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking cancelled',
             'data' => [
-                'booking' => new BookingResource(
-                    $this->bookings->cancelByCustomer($booking, $request->user(), $request->string('cancelled_reason')->toString() ?: null),
+                'booking' => new ServiceRequestResource(
+                    $this->bookings->cancelServiceRequest($booking, $request->user(), $request->string('cancelled_reason')->toString() ?: null),
                 ),
             ],
         ]);
     }
 
-    private function ensureOwnedByCustomer(Booking $booking): void
+    private function ensureOwnedByCustomer(ServiceRequest $booking): void
     {
         abort_if($booking->customer_id !== request()->user()?->id, 404);
     }

@@ -15,7 +15,7 @@ class SelectBookingWorkerRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'booking_request_id' => ['required', 'integer', Rule::exists('booking_requests', 'id')],
+            'booking_request_id' => ['required', 'integer', Rule::exists('service_request_workers', 'id')],
         ];
     }
 }

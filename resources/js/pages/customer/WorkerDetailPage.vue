@@ -52,7 +52,7 @@ async function submitBooking() {
     try {
         const response = await bookingsStore.create({
             ...form,
-            worker_id: worker.value.id,
+            worker_id: Number(route.params.id),
         });
         toast.success(response.message || 'Booking request sent');
         await router.push(`/customer/bookings/${response.data.booking.id}`);
@@ -250,7 +250,8 @@ watch(
             </section>
 
             <form class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="submitBooking">
-                <h3 class="font-semibold text-gray-900 dark:text-white">Send booking request</h3>
+                <h3 class="font-semibold text-gray-900 dark:text-white">Create booking request</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">The system will send this request to matching verified workers for the selected service and slot.</p>
                 <div class="mt-4 grid gap-4 md:grid-cols-2">
                     <FormSelect id="booking_service" v-model="form.service_id" label="Service" :options="serviceOptions" :error="errors.service_id" />
                     <FormInput id="booking_start" v-model="form.start_time" label="Start time" type="time" :error="errors.start_time" />

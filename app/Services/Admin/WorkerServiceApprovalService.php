@@ -4,12 +4,15 @@ namespace App\Services\Admin;
 
 use App\Models\User;
 use App\Models\WorkerService;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class WorkerServiceApprovalService
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function paginate(Request $request): LengthAwarePaginator
     {
         return WorkerService::query()
@@ -44,6 +47,11 @@ class WorkerServiceApprovalService
                 'reviewed_at' => now(),
             ]);
 
+            $this->audit->record('admin.worker_service_approved', $admin, $workerService, [
+                'worker_id' => $workerService->worker_id,
+                'service_id' => $workerService->service_id,
+            ]);
+
             return $workerService->refresh()->load(['worker:id,name,email,phone', 'service:id,name,slug,icon,is_active', 'reviewer:id,name']);
         });
     }
@@ -57,6 +65,12 @@ class WorkerServiceApprovalService
                 'rejection_reason' => $reason,
                 'reviewed_by' => $admin->id,
                 'reviewed_at' => now(),
+            ]);
+
+            $this->audit->record('admin.worker_service_rejected', $admin, $workerService, [
+                'worker_id' => $workerService->worker_id,
+                'service_id' => $workerService->service_id,
+                'reason' => $reason,
             ]);
 
             return $workerService->refresh()->load(['worker:id,name,email,phone', 'service:id,name,slug,icon,is_active', 'reviewer:id,name']);

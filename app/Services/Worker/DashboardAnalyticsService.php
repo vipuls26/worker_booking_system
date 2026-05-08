@@ -19,7 +19,7 @@ class DashboardAnalyticsService
     public function summary(User $worker): array
     {
         return [
-            'earnings' => round((float) $this->completedBookings($worker)->sum('total_amount'), 2),
+            'earnings' => round((float) $this->completedBookings($worker)->sum('worker_earning'), 2),
             'completed_bookings' => $this->completedBookings($worker)->count(),
             'cancellations' => $worker->workerBookings()->where('status', Booking::STATUS_CANCELLED)->count(),
             'average_rating' => round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2),
@@ -44,7 +44,7 @@ class DashboardAnalyticsService
     private function cards(User $worker): array
     {
         return [
-            ['label' => 'Earnings', 'value' => round((float) $this->completedBookings($worker)->sum('total_amount'), 2), 'icon' => 'pi-indian-rupee'],
+            ['label' => 'Earnings', 'value' => round((float) $this->completedBookings($worker)->sum('worker_earning'), 2), 'icon' => 'pi-indian-rupee'],
             ['label' => 'Completed bookings', 'value' => $this->completedBookings($worker)->count(), 'icon' => 'pi-check-circle'],
             ['label' => 'Cancellations', 'value' => $worker->workerBookings()->where('status', Booking::STATUS_CANCELLED)->count(), 'icon' => 'pi-times-circle'],
             ['label' => 'Average rating', 'value' => round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2), 'icon' => 'pi-star-fill'],
@@ -60,7 +60,7 @@ class DashboardAnalyticsService
 
         return $worker->workerBookings()
             ->selectRaw($monthExpression.' as label')
-            ->selectRaw('SUM(total_amount) as value')
+            ->selectRaw('SUM(worker_earning) as value')
             ->where('status', Booking::STATUS_COMPLETED)
             ->whereNotNull('booking_date')
             ->groupBy('label')
@@ -99,7 +99,7 @@ class DashboardAnalyticsService
             ->join('services', 'services.id', '=', 'bookings.service_id')
             ->select('services.name')
             ->selectRaw('COUNT(*) as bookings_count')
-            ->selectRaw('SUM(CASE WHEN bookings.status = ? THEN bookings.total_amount ELSE 0 END) as earnings', [Booking::STATUS_COMPLETED])
+            ->selectRaw('SUM(CASE WHEN bookings.status = ? THEN bookings.worker_earning ELSE 0 END) as earnings', [Booking::STATUS_COMPLETED])
             ->groupBy('services.id', 'services.name')
             ->orderByDesc('bookings_count')
             ->limit(5)

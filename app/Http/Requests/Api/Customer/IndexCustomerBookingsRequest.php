@@ -15,7 +15,7 @@ class IndexCustomerBookingsRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', Rule::in(['requested', 'pending', 'accepted', 'rejected', 'in_progress', 'completed', 'cancelled'])],
+            'status' => ['nullable', Rule::in(['open', 'worker_selected', 'cancelled'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

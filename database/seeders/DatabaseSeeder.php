@@ -20,21 +20,31 @@ class DatabaseSeeder extends Seeder
         $this->call(ServiceSeeder::class);
 
         User::factory()->for(Role::where('slug', 'admin')->firstOrFail())->create([
-            'name' => 'Admin User',
-            'email' => 'admin@example.com',
+            'name' => 'admin',
+            'email' => 'admin@gmail.com',
+            'password' => 'password',
             'phone' => '9000000001',
         ]);
 
         User::factory()->for(Role::where('slug', 'customer')->firstOrFail())->create([
-            'name' => 'Customer User',
-            'email' => 'customer@example.com',
+            'name' => 'customer',
+            'email' => 'customer@gmail.com',
+            'password' => 'password',
             'phone' => '9000000002',
         ]);
 
         User::factory()->for(Role::where('slug', 'worker')->firstOrFail())->create([
-            'name' => 'Worker User',
-            'email' => 'worker@example.com',
+            'name' => 'worker',
+            'email' => 'worker1@gmail.com',
+            'password' => 'password',
             'phone' => '9000000003',
+        ]);
+
+        User::factory()->for(Role::where('slug', 'worker')->firstOrFail())->create([
+            'name' => 'worker',
+            'email' => 'worker2@gmail.com',
+            'password' => 'password',
+            'phone' => '9000000004',
         ]);
     }
 }

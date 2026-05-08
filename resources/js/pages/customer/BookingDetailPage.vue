@@ -15,6 +15,9 @@ const bookingsStore = useCustomerBookingsStore();
 const cancelReason = ref('');
 const booking = computed(() => bookingsStore.booking);
 const acceptedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'accepted') || []);
+const selectedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'selected') || []);
+const comparisonRequests = computed(() => [...selectedRequests.value, ...acceptedRequests.value]);
+const otherRequests = computed(() => booking.value?.requests?.filter((request) => !['accepted', 'selected'].includes(request.status)) || []);
 const reviewForm = reactive({
     rating: 0,
     review: '',
@@ -49,13 +52,61 @@ async function selectWorker(bookingRequest) {
 
 async function submitReview() {
     try {
-        await bookingsStore.submitReview(route.params.id, reviewForm);
+        await bookingsStore.submitReview(booking.value.booking_id, reviewForm);
         toast.success('Review submitted');
         reviewForm.rating = 0;
         reviewForm.review = '';
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to submit review');
     }
+}
+
+function matchingService(request) {
+    const serviceId = Number(booking.value?.service?.id);
+
+    return request.worker?.services?.find((service) => Number(service.service_id) === serviceId);
+}
+
+function priceLabel(request) {
+    if (request.quoted_price) {
+        return request.pricing_type === 'hourly' ? `₹${request.quoted_price}/hr` : `₹${request.quoted_price} fixed`;
+    }
+
+    const service = matchingService(request);
+
+    if (! service) {
+        return 'Price not shared';
+    }
+
+    if (service.pricing_type === 'hourly') {
+        return `₹${service.price}/hr`;
+    }
+
+    return `₹${service.price} fixed`;
+}
+
+function minimumLabel(request) {
+    if (request.pricing_type === 'hourly') {
+        return `Min ${request.minimum_hours || 1}h`;
+    }
+
+    const service = matchingService(request);
+
+    if (! service || service.pricing_type !== 'hourly') {
+        return null;
+    }
+
+    return `Min ${service.minimum_hours || 1}h`;
+}
+
+function ratingLabel(worker) {
+    return Number(worker?.rating_average || 0).toFixed(1);
+}
+
+function reviewLabel(worker) {
+    const count = Number(worker?.reviews_count || 0);
+
+    return `${count} ${count === 1 ? 'review' : 'reviews'}`;
 }
 
 onMounted(load);
@@ -87,7 +138,7 @@ onMounted(load);
                 </div>
 
                 <div class="mt-6">
-                    <BookingStatusTracker :status="booking.status" />
+                    <BookingStatusTracker :status="booking.booking?.status || booking.status" />
                 </div>
             </section>
 
@@ -97,35 +148,83 @@ onMounted(load);
                         <h3 class="font-semibold text-gray-900 dark:text-white">Worker responses</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose an accepted worker to lock the booking.</p>
                     </div>
-                    <span v-if="booking.status === 'requested'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                    <span v-if="booking.status === 'open'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                         {{ acceptedRequests.length }} accepted
                     </span>
                 </div>
 
-                <div class="mt-4 divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 dark:divide-white/10 dark:border-white/10">
-                    <div v-for="request in booking.requests" :key="request.id" class="flex flex-col gap-3 bg-white p-4 dark:bg-gray-950 sm:flex-row sm:items-center sm:justify-between">
+                <div v-if="comparisonRequests.length" class="mt-4 grid gap-4 lg:grid-cols-2">
+                    <article v-for="request in comparisonRequests" :key="request.id" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-gray-950">
+                        <div class="flex gap-4">
+                            <div class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-900 dark:text-gray-500">
+                                <img v-if="request.worker?.profile?.profile_photo_url" :src="request.worker.profile.profile_photo_url" :alt="request.worker.name" class="size-full object-cover">
+                                <i v-else class="pi pi-user text-xl" aria-hidden="true"></i>
+                            </div>
+
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <h4 class="truncate font-semibold text-gray-900 dark:text-white">{{ request.worker?.name }}</h4>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ request.worker?.profile?.city || 'City not set' }}</p>
+                                    </div>
+                                    <span class="inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="request.status === 'selected' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'">
+                                        {{ request.status.replace('_', ' ') }}
+                                    </span>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                                    <div class="rounded-md bg-gray-50 p-3 dark:bg-white/5">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Price</p>
+                                        <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ priceLabel(request) }}</p>
+                                        <p v-if="minimumLabel(request)" class="text-xs text-gray-500 dark:text-gray-400">{{ minimumLabel(request) }}</p>
+                                    </div>
+                                    <div class="rounded-md bg-gray-50 p-3 dark:bg-white/5">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Rating</p>
+                                        <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ ratingLabel(request.worker) }} ★</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ reviewLabel(request.worker) }}</p>
+                                    </div>
+                                    <div class="rounded-md bg-gray-50 p-3 dark:bg-white/5">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Experience</p>
+                                        <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ request.worker?.profile?.experience_years || 0 }} years</p>
+                                    </div>
+                                    <div class="rounded-md bg-gray-50 p-3 dark:bg-white/5">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">Contact</p>
+                                        <p class="mt-1 truncate font-semibold text-gray-900 dark:text-white">{{ request.worker?.phone || request.worker?.email || 'Not shared' }}</p>
+                                    </div>
+                                </div>
+
+                                <p v-if="request.worker?.profile?.bio" class="mt-3 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{{ request.worker.profile.bio }}</p>
+
+                                <button
+                                    v-if="booking.status === 'open' && request.status === 'accepted'"
+                                    type="button"
+                                    class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200 sm:w-auto"
+                                    @click="selectWorker(request)"
+                                >
+                                    <i class="pi pi-check" aria-hidden="true"></i>
+                                    Select worker
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+
+                <div v-else class="mt-4 rounded-lg border border-dashed border-gray-200 p-5 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+                    No workers have accepted this request yet.
+                </div>
+
+                <div v-if="otherRequests.length" class="mt-5 overflow-hidden rounded-lg border border-gray-200 dark:border-white/10">
+                    <div v-for="request in otherRequests" :key="request.id" class="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 last:border-b-0 dark:border-white/10 dark:bg-gray-950 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p class="font-medium text-gray-900 dark:text-white">{{ request.worker?.name }}</p>
                             <p class="text-sm text-gray-500 dark:text-gray-400">{{ request.worker?.phone || request.worker?.email }}</p>
                         </div>
-                        <div class="flex items-center gap-3">
-                            <span class="rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="{
-                                'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300': ['accepted', 'selected'].includes(request.status),
-                                'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300': ['rejected', 'cancelled'].includes(request.status),
-                                'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300': request.status === 'pending',
-                            }">
-                                {{ request.status.replace('_', ' ') }}
-                            </span>
-                            <button
-                                v-if="booking.status === 'requested' && request.status === 'accepted'"
-                                type="button"
-                                class="inline-flex items-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
-                                @click="selectWorker(request)"
-                            >
-                                <i class="pi pi-check" aria-hidden="true"></i>
-                                Select
-                            </button>
-                        </div>
+                        <span class="w-fit rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="{
+                            'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300': ['rejected', 'cancelled', 'auto_cancelled', 'not_selected'].includes(request.status),
+                            'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300': request.status === 'pending',
+                        }">
+                            {{ request.status.replace('_', ' ') }}
+                        </span>
                     </div>
                 </div>
             </section>
@@ -153,7 +252,7 @@ onMounted(load);
                     </dl>
                 </div>
 
-                <form v-if="['requested', 'pending'].includes(booking.status)" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="cancel">
+                <form v-if="booking.status === 'open'" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="cancel">
                     <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
                     <textarea v-model="cancelReason" rows="4" class="mt-4 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white" placeholder="Reason"></textarea>
                     <div class="mt-4">
@@ -176,7 +275,7 @@ onMounted(load);
                         <p v-if="booking.review.review" class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ booking.review.review }}</p>
                     </div>
 
-                    <form v-else-if="booking.status === 'completed'" class="mt-4 space-y-4" @submit.prevent="submitReview">
+                    <form v-else-if="booking.booking?.status === 'completed'" class="mt-4 space-y-4" @submit.prevent="submitReview">
                         <RatingStars v-model="reviewForm.rating" />
                         <textarea
                             v-model="reviewForm.review"

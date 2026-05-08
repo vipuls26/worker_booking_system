@@ -9,6 +9,7 @@ use App\Http\Requests\Api\Auth\RegisterRequest;
 use App\Http\Requests\Api\Auth\ResetPasswordRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\Audit\AuditLogger;
 use App\Services\AuthService;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Verified;
@@ -22,7 +23,10 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function __construct(private readonly AuthService $authService) {}
+    public function __construct(
+        private readonly AuthService $authService,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -116,7 +120,11 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
+        $user = $request->user();
+
         $request->user()?->currentAccessToken()?->delete();
+
+        $this->audit->record('auth.logout', $user, $user);
 
         return response()->json([
             'success' => true,
@@ -141,6 +149,8 @@ class AuthController extends Controller
 
         $user->sendEmailVerificationNotification();
 
+        $this->audit->record('auth.email_verification_requested', $user, $user);
+
         return response()->json([
             'success' => true,
             'message' => 'Verification link sent to your email',
@@ -156,6 +166,7 @@ class AuthController extends Controller
 
         if (! $user->hasVerifiedEmail() && $user->markEmailAsVerified()) {
             event(new Verified($user));
+            $this->audit->record('auth.email_verified', $user, $user);
         }
 
         $user->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);

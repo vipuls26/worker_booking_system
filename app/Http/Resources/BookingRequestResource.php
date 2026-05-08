@@ -24,7 +24,7 @@ class BookingRequestResource extends JsonResource
             'worker_id' => $this->worker_id,
             'status' => $this->status,
             'responded_at' => $this->responded_at?->toISOString(),
-            'worker' => new UserResource($this->whenLoaded('worker')),
+            'worker' => new WorkerSearchResource($this->whenLoaded('worker')),
             'booking' => new BookingResource($this->whenLoaded('booking')),
             'created_at' => $this->created_at?->toISOString(),
         ];

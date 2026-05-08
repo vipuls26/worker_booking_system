@@ -5,11 +5,12 @@ namespace App\Services\Booking;
 use App\Events\BookingCreated;
 use App\Events\BookingStatusChanged;
 use App\Models\Booking;
-use App\Models\BookingRequest;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerService;
 use App\Notifications\BookingWorkflowNotification;
-use App\Services\Worker\AvailabilityCheckerService;
+use App\Services\Audit\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -18,120 +19,78 @@ use Illuminate\Validation\ValidationException;
 class BookingService
 {
     public function __construct(
-        private readonly AvailabilityCheckerService $availability,
         private readonly BookingWorkflowService $workflow,
+        private readonly WorkerMatchingService $workerMatching,
+        private readonly AvailabilityService $availability,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
      * @param  array<string, mixed>  $data
      */
-    public function create(User $customer, array $data): Booking
+    public function create(User $customer, array $data): ServiceRequest
     {
-        return DB::transaction(function () use ($customer, $data): Booking {
+        return DB::transaction(function () use ($customer, $data): ServiceRequest {
             $durationMinutes = $this->durationMinutes($data);
-            $workerIds = collect($data['worker_ids'] ?? [])
-                ->push($data['worker_id'] ?? null)
-                ->filter()
-                ->unique()
-                ->values();
-            $workers = User::query()
-                ->whereKey($workerIds)
-                ->with('role')
-                ->get();
+            $workerServices = $this->workerMatching->matchingWorkerServices([
+                ...$data,
+                'duration_minutes' => $durationMinutes,
+            ]);
 
-            if ($workers->count() !== $workerIds->count() || $workers->contains(fn (User $worker): bool => ! $worker->hasRole('worker'))) {
-                throw ValidationException::withMessages(['worker_ids' => ['One or more selected users are not workers.']]);
+            if ($workerServices->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'service_id' => ['No verified and available workers match this service and time slot.'],
+                ]);
             }
 
-            if ($workers->contains(fn (User $worker): bool => $worker->is_blocked || $worker->email_verified_at === null || ! $worker->is_verified)) {
-                throw ValidationException::withMessages(['worker_ids' => ['One or more selected workers are not verified.']]);
-            }
+            $pricing = $workerServices->sortBy('price')->first();
 
-            $verifiedProfileCount = User::query()
-                ->whereKey($workerIds)
-                ->whereHas('workerProfile', fn ($query) => $query->where('is_verified', true))
-                ->count();
-
-            if ($verifiedProfileCount !== $workerIds->count()) {
-                throw ValidationException::withMessages(['worker_ids' => ['One or more selected workers do not have an approved worker profile.']]);
-            }
-
-            $availableWorkerIds = $workers
-                ->filter(fn (User $worker): bool => $this->availability->isAvailable($worker, $data['booking_date'], $data['start_time'], $durationMinutes))
-                ->pluck('id');
-
-            if ($availableWorkerIds->count() !== $workerIds->count()) {
-                throw ValidationException::withMessages(['start_time' => ['One or more selected workers are not available at this time.']]);
-            }
-
-            $workerServices = WorkerService::query()
-                ->whereIn('worker_id', $availableWorkerIds)
-                ->where('service_id', $data['service_id'])
-                ->where('is_active', true)
-                ->where('approval_status', WorkerService::StatusApproved)
-                ->whereHas('service', fn ($query) => $query->where('is_active', true))
-                ->get()
-                ->keyBy('worker_id');
-
-            if ($workerServices->count() !== $workerIds->count()) {
-                throw ValidationException::withMessages(['service_id' => ['One or more selected workers do not offer this service.']]);
-            }
-
-            $selectedWorkerId = $workerIds->count() === 1 ? (int) $availableWorkerIds->first() : null;
-            $pricing = $selectedWorkerId ? $workerServices->get($selectedWorkerId) : $workerServices->sortBy('price')->first();
-
-            $booking = Booking::create([
+            $serviceRequest = ServiceRequest::create([
                 'customer_id' => $customer->id,
-                'worker_id' => $selectedWorkerId,
+                'selected_worker_id' => null,
+                'booking_id' => null,
                 'service_id' => $data['service_id'],
-                'booking_date' => $data['booking_date'],
-                'booking_time' => $data['start_time'],
+                'requested_date' => $data['booking_date'],
                 'start_time' => $data['start_time'],
                 'end_time' => $data['end_time'] ?? CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])->addMinutes($durationMinutes)->format('H:i'),
                 'address' => $data['address'],
-                'notes' => $data['issue_description'],
-                'issue_description' => $data['issue_description'],
-                'total_amount' => $pricing ? $this->totalAmount($pricing, $durationMinutes) : 0,
-                'status' => $selectedWorkerId ? Booking::STATUS_PENDING : Booking::STATUS_REQUESTED,
+                'description' => $data['issue_description'],
+                'estimated_amount' => $pricing ? $this->totalAmount($pricing, $durationMinutes) : 0,
+                'status' => ServiceRequest::STATUS_OPEN,
             ]);
 
-            $this->workflow->record(
-                booking: $booking,
-                fromStatus: null,
-                toStatus: $booking->status,
-                event: $selectedWorkerId ? 'booking_created' : 'booking_request_created',
-                actor: $customer,
-            );
-
-            $workerServices->keys()->each(function (int $workerId) use ($booking, $selectedWorkerId): void {
-                $booking->bookingRequests()->create([
-                    'worker_id' => $workerId,
-                    'status' => $selectedWorkerId === $workerId ? BookingRequest::STATUS_SELECTED : BookingRequest::STATUS_PENDING,
-                    'responded_at' => $selectedWorkerId === $workerId ? now() : null,
+            $workerServices->each(function (WorkerService $workerService) use ($serviceRequest): void {
+                $serviceRequest->workers()->create([
+                    'worker_id' => $workerService->worker_id,
+                    'worker_service_id' => $workerService->id,
+                    'pricing_type' => $workerService->pricing_type,
+                    'quoted_price' => $workerService->price,
+                    'minimum_hours' => $workerService->minimum_hours,
+                    'status' => ServiceRequestWorker::STATUS_PENDING,
+                    'responded_at' => null,
                 ]);
             });
 
-            $booking = $booking->refresh()->load(['customer.role', 'worker.role', 'service', 'bookingRequests.worker.role', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
+            $serviceRequest = $serviceRequest->refresh()->load($this->serviceRequestRelations());
 
-            $booking->bookingRequests->each(function (BookingRequest $bookingRequest) use ($booking): void {
-                $bookingRequest->worker?->notify(new BookingWorkflowNotification(
-                    booking: $booking,
-                    event: 'booking_received',
-                    title: 'New booking request',
-                    message: sprintf('%s requested %s.', $booking->customer?->name ?? 'A customer', $booking->service?->name ?? 'a service'),
-                ));
-            });
+            $this->audit->record('service_request.created', $customer, $serviceRequest, [
+                'service_id' => $serviceRequest->service_id,
+                'target_worker_id' => $data['worker_id'] ?? null,
+                'matched_workers_count' => $serviceRequest->workers->count(),
+                'requested_date' => $serviceRequest->requested_date?->toDateString(),
+                'start_time' => $serviceRequest->start_time,
+                'end_time' => $serviceRequest->end_time,
+            ]);
 
-            event(new BookingCreated($booking));
-
-            return $booking;
+            return $serviceRequest;
         });
     }
 
     public function customerBookings(User $customer, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
-        return $customer->customerBookings()
-            ->with(['worker.role', 'service', 'bookingRequests.worker.role', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])
+        return ServiceRequest::query()
+            ->where('customer_id', $customer->id)
+            ->with($this->serviceRequestRelations())
             ->when($status, fn ($query) => $query->where('status', $status))
             ->latest()
             ->paginate($perPage);
@@ -140,7 +99,7 @@ class BookingService
     public function workerBookings(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
         return $worker->workerBookings()
-            ->with(['customer.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])
+            ->with(['customer.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])
             ->when($status, fn ($query) => $query->where('status', $status))
             ->latest()
             ->paginate($perPage);
@@ -148,93 +107,175 @@ class BookingService
 
     public function workerRequests(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
-        return BookingRequest::query()
-            ->with(['booking.customer.role', 'booking.service', 'worker.role'])
+        return ServiceRequestWorker::query()
+            ->with(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role'])
             ->where('worker_id', $worker->id)
             ->when($status, fn ($query) => $query->where('status', $status))
             ->latest()
             ->paginate($perPage);
     }
 
-    public function respondToRequest(BookingRequest $bookingRequest, User $worker, string $status): BookingRequest
+    public function respondToRequest(ServiceRequestWorker $serviceRequestWorker, User $worker, string $status): ServiceRequestWorker
     {
-        abort_if($bookingRequest->worker_id !== $worker->id, 404);
+        abort_if($serviceRequestWorker->worker_id !== $worker->id, 404);
 
-        if ($bookingRequest->status !== BookingRequest::STATUS_PENDING) {
+        if ($serviceRequestWorker->status !== ServiceRequestWorker::STATUS_PENDING) {
             throw ValidationException::withMessages(['status' => ['This request has already been answered.']]);
         }
 
-        if ($bookingRequest->booking()->where('status', '!=', Booking::STATUS_REQUESTED)->exists()) {
+        if ($serviceRequestWorker->serviceRequest()->where('status', '!=', ServiceRequest::STATUS_OPEN)->exists()) {
             throw ValidationException::withMessages(['status' => ['This booking request is no longer open.']]);
         }
 
-        $bookingRequest->update([
+        if ($status === ServiceRequestWorker::STATUS_ACCEPTED) {
+            $serviceRequest = $serviceRequestWorker->serviceRequest;
+            $durationMinutes = $this->durationMinutes([
+                'booking_date' => $serviceRequest->requested_date->toDateString(),
+                'start_time' => $serviceRequest->start_time,
+                'end_time' => $serviceRequest->end_time,
+            ]);
+
+            if (! $this->availability->isWorkerAvailable($worker, $serviceRequest->requested_date->toDateString(), $serviceRequest->start_time, $durationMinutes)) {
+                throw ValidationException::withMessages(['status' => ['You are no longer available for this booking slot.']]);
+            }
+        }
+
+        $serviceRequestWorker->update([
             'status' => $status,
             'responded_at' => now(),
         ]);
 
-        $this->workflow->record(
-            booking: $bookingRequest->booking,
-            fromStatus: $bookingRequest->booking->status,
-            toStatus: $bookingRequest->booking->status,
-            event: $status === BookingRequest::STATUS_ACCEPTED ? 'booking_request_accepted' : 'booking_request_rejected',
-            actor: $worker,
-        );
+        $serviceRequestWorker = $serviceRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role']);
 
-        $bookingRequest = $bookingRequest->refresh()->load(['booking.customer.role', 'booking.service', 'worker.role']);
+        $this->audit->record('service_request_worker.responded', $worker, $serviceRequestWorker, [
+            'service_request_id' => $serviceRequestWorker->service_request_id,
+            'status' => $serviceRequestWorker->status,
+            'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
+        ]);
 
-        $bookingRequest->booking->customer?->notify(new BookingWorkflowNotification(
-            booking: $bookingRequest->booking,
-            event: $status === BookingRequest::STATUS_ACCEPTED ? 'booking_accepted' : 'booking_rejected',
-            title: $status === BookingRequest::STATUS_ACCEPTED ? 'Worker accepted your request' : 'Worker rejected your request',
-            message: sprintf('%s %s your %s request.', $worker->name, $status === BookingRequest::STATUS_ACCEPTED ? 'accepted' : 'rejected', $bookingRequest->booking->service?->name ?? 'booking'),
-        ));
-
-        return $bookingRequest;
+        return $serviceRequestWorker;
     }
 
-    public function selectFinalWorker(Booking $booking, User $customer, int $bookingRequestId): Booking
+    public function selectFinalWorker(ServiceRequest $serviceRequest, User $customer, int $serviceRequestWorkerId): ServiceRequest
     {
-        abort_if($booking->customer_id !== $customer->id, 404);
+        abort_if($serviceRequest->customer_id !== $customer->id, 404);
 
-        return DB::transaction(function () use ($booking, $bookingRequestId): Booking {
-            if ($booking->status !== Booking::STATUS_REQUESTED) {
+        return DB::transaction(function () use ($serviceRequest, $customer, $serviceRequestWorkerId): ServiceRequest {
+            if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
                 throw ValidationException::withMessages(['booking_request_id' => ['This booking is not waiting for worker selection.']]);
             }
 
-            $bookingRequest = $booking->bookingRequests()
-                ->whereKey($bookingRequestId)
-                ->where('status', BookingRequest::STATUS_ACCEPTED)
+            $serviceRequestWorker = $serviceRequest->workers()
+                ->with('worker')
+                ->whereKey($serviceRequestWorkerId)
+                ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
                 ->firstOrFail();
 
-            $booking->update([
-                'worker_id' => $bookingRequest->worker_id,
+            $durationMinutes = $this->durationMinutes([
+                'booking_date' => $serviceRequest->requested_date->toDateString(),
+                'start_time' => $serviceRequest->start_time,
+                'end_time' => $serviceRequest->end_time,
             ]);
 
-            $booking = $this->workflow->transition(
-                booking: $booking,
-                nextStatus: Booking::STATUS_PENDING,
-                actor: $customer,
-                context: ['event' => 'worker_selected'],
-            );
+            if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
+                worker: $serviceRequestWorker->worker,
+                date: $serviceRequest->requested_date->toDateString(),
+                startTime: $serviceRequest->start_time,
+                durationMinutes: $durationMinutes,
+                ignoreServiceRequestId: $serviceRequest->id,
+            )) {
+                throw ValidationException::withMessages(['booking_request_id' => ['This worker is no longer available for the selected slot.']]);
+            }
 
-            $bookingRequest->update([
-                'status' => BookingRequest::STATUS_SELECTED,
+            $totalAmount = (float) ($serviceRequestWorker->quoted_price ?: $serviceRequest->estimated_amount);
+            $commission = $this->commissionBreakdown($totalAmount);
+
+            $booking = Booking::create([
+                'service_request_id' => $serviceRequest->id,
+                'customer_id' => $serviceRequest->customer_id,
+                'worker_id' => $serviceRequestWorker->worker_id,
+                'selected_worker_id' => $serviceRequestWorker->worker_id,
+                'service_id' => $serviceRequest->service_id,
+                'booking_date' => $serviceRequest->requested_date,
+                'booking_time' => $serviceRequest->start_time,
+                'start_time' => $serviceRequest->start_time,
+                'end_time' => $serviceRequest->end_time,
+                'address' => $serviceRequest->address,
+                'notes' => $serviceRequest->description,
+                'issue_description' => $serviceRequest->description,
+                'total_amount' => $totalAmount,
+                'commission_rate' => $commission['rate'],
+                'platform_commission' => $commission['platform_commission'],
+                'worker_earning' => $commission['worker_earning'],
+                'status' => Booking::STATUS_CONFIRMED,
+            ]);
+
+            $serviceRequest->update([
+                'selected_worker_id' => $serviceRequestWorker->worker_id,
+                'booking_id' => $booking->id,
+                'status' => ServiceRequest::STATUS_WORKER_SELECTED,
+            ]);
+
+            $serviceRequestWorker->update([
+                'status' => ServiceRequestWorker::STATUS_SELECTED,
                 'responded_at' => now(),
             ]);
 
-            $booking->bookingRequests()
-                ->whereKeyNot($bookingRequest->id)
-                ->whereIn('status', [BookingRequest::STATUS_PENDING, BookingRequest::STATUS_ACCEPTED])
+            $serviceRequest->workers()
+                ->whereKeyNot($serviceRequestWorker->id)
+                ->whereIn('status', [ServiceRequestWorker::STATUS_PENDING, ServiceRequestWorker::STATUS_ACCEPTED])
                 ->update([
-                    'status' => BookingRequest::STATUS_CANCELLED,
+                    'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
                     'responded_at' => now(),
                 ]);
 
-            $booking = $booking->refresh()->load(['customer.role', 'worker.role', 'service', 'bookingRequests.worker.role', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
-            event(new BookingStatusChanged($booking, Booking::STATUS_REQUESTED, $booking->status));
+            $booking = $booking->refresh()->load($this->bookingRelations());
+            $this->workflow->record($booking, null, $booking->status, 'worker_selected', $customer);
+            event(new BookingCreated($booking));
 
-            return $booking;
+            $this->audit->record('service_request.worker_selected', $customer, $serviceRequest, [
+                'booking_id' => $booking->id,
+                'selected_worker_id' => $serviceRequestWorker->worker_id,
+                'total_amount' => $booking->total_amount,
+                'commission_rate' => $booking->commission_rate,
+                'platform_commission' => $booking->platform_commission,
+                'worker_earning' => $booking->worker_earning,
+            ]);
+
+            $this->audit->record('booking.created', $customer, $booking, [
+                'service_request_id' => $serviceRequest->id,
+                'worker_id' => $booking->worker_id,
+                'status' => $booking->status,
+            ]);
+
+            $booking->worker?->notify(new BookingWorkflowNotification(
+                booking: $booking,
+                event: 'booking_confirmed',
+                title: 'Booking confirmed',
+                message: sprintf('%s selected you for %s.', $booking->customer?->name ?? 'A customer', $booking->service?->name ?? 'a booking'),
+            ));
+
+            $booking->customer?->notify(new BookingWorkflowNotification(
+                booking: $booking,
+                event: 'booking_confirmed',
+                title: 'Booking confirmed',
+                message: sprintf('Your %s booking is confirmed with %s.', $booking->service?->name ?? 'service', $booking->worker?->name ?? 'the selected worker'),
+            ));
+
+            $serviceRequest->workers()
+                ->where('status', ServiceRequestWorker::STATUS_NOT_SELECTED)
+                ->with('worker')
+                ->get()
+                ->each(function (ServiceRequestWorker $notSelectedWorker) use ($booking): void {
+                    $notSelectedWorker->worker?->notify(new BookingWorkflowNotification(
+                        booking: $booking,
+                        event: 'booking_request_closed',
+                        title: 'Booking request closed',
+                        message: sprintf('The customer selected another worker for %s.', $booking->service?->name ?? 'this booking'),
+                    ));
+                });
+
+            return $serviceRequest->refresh()->load($this->serviceRequestRelations());
         });
     }
 
@@ -244,11 +285,17 @@ class BookingService
 
         $booking = $this->workflow
             ->transition($booking, $status, $actor, $reason)
-            ->load(['customer.role', 'worker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
+            ->load(['customer.role', 'worker.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
 
         $this->notifyBookingStatusChanged($booking, $status, $actor);
 
         event(new BookingStatusChanged($booking, $oldStatus, $status));
+
+        $this->audit->record('booking.status_changed', $actor, $booking, [
+            'from_status' => $oldStatus,
+            'to_status' => $status,
+            'reason' => $reason,
+        ]);
 
         return $booking;
     }
@@ -260,6 +307,32 @@ class BookingService
         $this->workflow->assertCustomerCanCancel($booking);
 
         return $this->updateStatus($booking, Booking::STATUS_CANCELLED, $reason, $customer);
+    }
+
+    public function cancelServiceRequest(ServiceRequest $serviceRequest, User $customer, ?string $reason = null): ServiceRequest
+    {
+        abort_if($serviceRequest->customer_id !== $customer->id, 404);
+
+        if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
+            throw ValidationException::withMessages(['status' => ['Only open service requests can be cancelled before worker selection.']]);
+        }
+
+        $serviceRequest->update([
+            'status' => ServiceRequest::STATUS_CANCELLED,
+        ]);
+
+        $serviceRequest->workers()
+            ->whereIn('status', [ServiceRequestWorker::STATUS_PENDING, ServiceRequestWorker::STATUS_ACCEPTED])
+            ->update([
+                'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
+                'responded_at' => now(),
+            ]);
+
+        $this->audit->record('service_request.cancelled', $customer, $serviceRequest, [
+            'reason' => $reason,
+        ]);
+
+        return $serviceRequest->refresh()->load($this->serviceRequestRelations());
     }
 
     private function durationMinutes(array $data): int
@@ -281,6 +354,21 @@ class BookingService
         }
 
         return (float) $workerService->price;
+    }
+
+    /**
+     * @return array{rate: float, platform_commission: float, worker_earning: float}
+     */
+    private function commissionBreakdown(float $totalAmount): array
+    {
+        $rate = Booking::DefaultCommissionRate;
+        $platformCommission = round($totalAmount * ($rate / 100), 2);
+
+        return [
+            'rate' => $rate,
+            'platform_commission' => $platformCommission,
+            'worker_earning' => round($totalAmount - $platformCommission, 2),
+        ];
     }
 
     private function notifyBookingStatusChanged(Booking $booking, string $status, ?User $actor): void
@@ -316,5 +404,58 @@ class BookingService
             title: $title,
             message: $message,
         ));
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    public function bookingRelations(): array
+    {
+        return [
+            'customer.role',
+            'worker.role',
+            'selectedWorker.role',
+            'service',
+            'bookingRequests.worker' => fn ($query) => $query
+                ->with([
+                    'role',
+                    'workerProfile',
+                    'workerServices' => fn ($query) => $query
+                        ->where('is_active', true)
+                        ->where('approval_status', 'approved')
+                        ->whereHas('service', fn ($query) => $query->where('is_active', true))
+                        ->with('service:id,name,slug,icon,is_active')
+                        ->orderBy('price'),
+                ])
+                ->withAvg('workerReviews as rating_average', 'rating')
+                ->withCount('workerReviews as reviews_count'),
+            'activities.actor.role',
+            'review.customer.role',
+            'workerReview.worker.role',
+        ];
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    public function serviceRequestRelations(): array
+    {
+        return [
+            'customer.role',
+            'selectedWorker.role',
+            'service',
+            'booking.customer.role',
+            'booking.worker.role',
+            'booking.selectedWorker.role',
+            'booking.service',
+            'booking.activities.actor.role',
+            'booking.review.customer.role',
+            'booking.workerReview.worker.role',
+            'workers.worker' => fn ($query) => $query
+                ->with(['role', 'workerProfile'])
+                ->withAvg('workerReviews as rating_average', 'rating')
+                ->withCount('workerReviews as reviews_count'),
+            'workers.workerService.service',
+        ];
     }
 }

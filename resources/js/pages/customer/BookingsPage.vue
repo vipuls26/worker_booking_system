@@ -12,12 +12,8 @@ const bookingsStore = useCustomerBookingsStore();
 
 const statuses = [
     { label: 'All statuses', value: '' },
-    { label: 'Requested', value: 'requested' },
-    { label: 'Pending', value: 'pending' },
-    { label: 'Accepted', value: 'accepted' },
-    { label: 'Rejected', value: 'rejected' },
-    { label: 'In progress', value: 'in_progress' },
-    { label: 'Completed', value: 'completed' },
+    { label: 'Open requests', value: 'open' },
+    { label: 'Worker selected', value: 'worker_selected' },
     { label: 'Cancelled', value: 'cancelled' },
 ];
 
@@ -33,7 +29,7 @@ onMounted(() => load());
 </script>
 
 <template>
-    <DashboardLayout title="My Bookings">
+    <DashboardLayout title="My Requests">
         <div class="space-y-5">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <FormSelect id="booking_status" v-model="bookingsStore.filters.status" label="Status" :options="statuses" option-label="label" option-value="value" @update:model-value="load()" />
@@ -43,7 +39,7 @@ onMounted(() => load());
                 <div v-if="bookingsStore.loading" class="p-4">
                     <SkeletonList :count="4" />
                 </div>
-                <div v-else-if="bookingsStore.bookings.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No bookings yet.</div>
+                <div v-else-if="bookingsStore.bookings.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No service requests yet.</div>
                 <div v-else class="divide-y divide-gray-100 dark:divide-white/10">
                     <RouterLink v-for="booking in bookingsStore.bookings" :key="booking.id" :to="`/customer/bookings/${booking.id}`" class="block px-5 py-4 transition hover:bg-gray-50 dark:hover:bg-white/5">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

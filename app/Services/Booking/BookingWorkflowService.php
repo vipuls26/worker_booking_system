@@ -55,9 +55,9 @@ class BookingWorkflowService
 
     public function assertCustomerCanCancel(Booking $booking): void
     {
-        if (! in_array($booking->status, [Booking::STATUS_REQUESTED, Booking::STATUS_PENDING], true)) {
+        if (! in_array($booking->status, [Booking::STATUS_REQUESTED, Booking::STATUS_PENDING, Booking::STATUS_CONFIRMED], true)) {
             throw ValidationException::withMessages([
-                'status' => ['Only requested or pending bookings can be cancelled by the customer.'],
+                'status' => ['Only requested, pending, or confirmed bookings can be cancelled by the customer.'],
             ]);
         }
     }
@@ -65,8 +65,9 @@ class BookingWorkflowService
     private function assertTransitionAllowed(Booking $booking, string $nextStatus): void
     {
         $allowed = [
-            Booking::STATUS_REQUESTED => [Booking::STATUS_PENDING, Booking::STATUS_CANCELLED],
+            Booking::STATUS_REQUESTED => [Booking::STATUS_CONFIRMED, Booking::STATUS_PENDING, Booking::STATUS_CANCELLED],
             Booking::STATUS_PENDING => [Booking::STATUS_ACCEPTED, Booking::STATUS_REJECTED, Booking::STATUS_CANCELLED],
+            Booking::STATUS_CONFIRMED => [Booking::STATUS_IN_PROGRESS, Booking::STATUS_CANCELLED],
             Booking::STATUS_ACCEPTED => [Booking::STATUS_IN_PROGRESS, Booking::STATUS_CANCELLED],
             Booking::STATUS_IN_PROGRESS => [Booking::STATUS_COMPLETED, Booking::STATUS_CANCELLED],
             Booking::STATUS_REJECTED => [],
@@ -85,6 +86,7 @@ class BookingWorkflowService
     {
         return match ($status) {
             Booking::STATUS_PENDING => 'worker_selected',
+            Booking::STATUS_CONFIRMED => 'booking_confirmed',
             Booking::STATUS_ACCEPTED => 'booking_accepted',
             Booking::STATUS_REJECTED => 'booking_rejected',
             Booking::STATUS_IN_PROGRESS => 'work_started',

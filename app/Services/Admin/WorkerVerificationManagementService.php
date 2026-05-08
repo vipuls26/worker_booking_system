@@ -4,12 +4,15 @@ namespace App\Services\Admin;
 
 use App\Models\User;
 use App\Models\WorkerVerification;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class WorkerVerificationManagementService
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function paginate(Request $request): LengthAwarePaginator
     {
         return WorkerVerification::query()
@@ -33,16 +36,16 @@ class WorkerVerificationManagementService
                 'verified_at' => now(),
             ]);
 
-            if ($worker) {
-                $worker->update(['is_verified' => true]);
-            }
-
             $worker
                 ?->workerProfile()
                 ->updateOrCreate(['user_id' => $verification->user_id], [
                     'experience_years' => $verification->experience_years,
                     'is_verified' => true,
                 ]);
+
+            $this->audit->record('admin.worker_verification_approved', $admin, $verification, [
+                'worker_id' => $verification->user_id,
+            ]);
 
             return $verification->refresh()->load(['user.role', 'verifier.role']);
         });
@@ -79,6 +82,11 @@ class WorkerVerificationManagementService
                     'experience_years' => $verification->experience_years,
                     'is_verified' => false,
                 ]);
+
+            $this->audit->record('admin.worker_verification_'.$status, $admin, $verification, [
+                'worker_id' => $verification->user_id,
+                'reason' => $reason,
+            ]);
 
             return $verification->refresh()->load(['user.role', 'verifier.role']);
         });

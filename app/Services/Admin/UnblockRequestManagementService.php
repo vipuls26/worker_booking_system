@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\UnblockRequest;
 use App\Models\User;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,8 @@ use Illuminate\Validation\ValidationException;
 
 class UnblockRequestManagementService
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function paginate(Request $request): LengthAwarePaginator
     {
         return UnblockRequest::query()
@@ -49,6 +52,11 @@ class UnblockRequestManagementService
             if ($status === UnblockRequest::STATUS_APPROVED) {
                 $unblockRequest->user?->update(['is_blocked' => false]);
             }
+
+            $this->audit->record('admin.unblock_request_'.$status, $admin, $unblockRequest, [
+                'user_id' => $unblockRequest->user_id,
+                'note' => $note,
+            ]);
 
             return $unblockRequest->refresh()->load(['user.role', 'reviewer.role']);
         });

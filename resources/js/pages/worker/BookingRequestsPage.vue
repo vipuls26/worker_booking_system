@@ -16,14 +16,14 @@ const statusOptions = [
     { label: 'Accepted', value: 'accepted' },
     { label: 'Rejected', value: 'rejected' },
     { label: 'Selected', value: 'selected' },
-    { label: 'Cancelled', value: 'cancelled' },
+    { label: 'Not selected', value: 'not_selected' },
 ];
 
 function statusClass(status) {
     return {
         'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300': status === 'pending',
         'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300': ['accepted', 'selected'].includes(status),
-        'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300': ['rejected', 'cancelled'].includes(status),
+        'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300': ['rejected', 'cancelled', 'auto_cancelled', 'not_selected'].includes(status),
     };
 }
 

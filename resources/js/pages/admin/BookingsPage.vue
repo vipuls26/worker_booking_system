@@ -20,7 +20,9 @@ const cancelling = ref(null);
 const cancelReason = ref('');
 const statusOptions = [
     { id: '', name: 'All statuses' },
+    { id: 'requested', name: 'Requested' },
     { id: 'pending', name: 'Pending' },
+    { id: 'confirmed', name: 'Confirmed' },
     { id: 'accepted', name: 'Accepted' },
     { id: 'rejected', name: 'Rejected' },
     { id: 'in_progress', name: 'In progress' },

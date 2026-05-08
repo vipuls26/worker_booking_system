@@ -7,6 +7,8 @@ use App\Models\BookingRequest;
 use App\Models\Review;
 use App\Models\Role;
 use App\Models\Service;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
 use App\Models\WorkerService;
@@ -120,6 +122,110 @@ class BookingSystemTest extends TestCase
             'from_status' => Booking::STATUS_IN_PROGRESS,
             'to_status' => Booking::STATUS_COMPLETED,
             'event' => 'work_completed',
+        ]);
+    }
+
+    public function test_worker_must_provide_reason_when_cancelling_booking_request(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+        ]);
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_CANCELLED,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('response_reason');
+    }
+
+    public function test_worker_can_cancel_booking_request_with_reason(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+        ]);
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_CANCELLED,
+            'response_reason' => 'Already booked with another customer at this time.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.booking_request.status', ServiceRequestWorker::STATUS_CANCELLED)
+            ->assertJsonPath('data.booking_request.response_reason', 'Already booked with another customer at this time.');
+
+        $this->assertDatabaseHas('service_request_workers', [
+            'id' => $bookingRequest->id,
+            'status' => ServiceRequestWorker::STATUS_CANCELLED,
+            'response_reason' => 'Already booked with another customer at this time.',
+        ]);
+    }
+
+    public function test_worker_must_provide_reason_when_cancelling_booking(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $booking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/bookings/{$booking->id}/status", [
+            'status' => Booking::STATUS_CANCELLED,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('cancelled_reason');
+    }
+
+    public function test_worker_can_cancel_booking_with_reason(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $booking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_ACCEPTED,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/bookings/{$booking->id}/status", [
+            'status' => Booking::STATUS_CANCELLED,
+            'cancelled_reason' => 'Emergency repair call, cannot attend this slot.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.booking.status', Booking::STATUS_CANCELLED)
+            ->assertJsonPath('data.booking.cancelled_by', $worker->id)
+            ->assertJsonPath('data.booking.cancelled_reason', 'Emergency repair call, cannot attend this slot.');
+
+        $this->assertDatabaseHas('booking_activities', [
+            'booking_id' => $booking->id,
+            'actor_id' => $worker->id,
+            'from_status' => Booking::STATUS_PENDING,
+            'to_status' => Booking::STATUS_CANCELLED,
+            'event' => 'booking_cancelled',
+            'note' => 'Emergency repair call, cannot attend this slot.',
         ]);
     }
 

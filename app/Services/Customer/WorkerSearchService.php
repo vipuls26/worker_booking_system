@@ -22,9 +22,9 @@ class WorkerSearchService
         $query = User::query()
             ->select('users.*')
             ->whereHas('role', fn ($query) => $query->where('slug', 'worker'))
-            ->where('is_blocked', false)
-            ->whereNotNull('email_verified_at')
-            ->where('is_verified', true)
+            ->where('users.is_blocked', false)
+            ->whereNotNull('users.email_verified_at')
+            ->where('users.is_verified', true)
             ->whereHas('workerProfile', fn ($query) => $query->where('is_verified', true))
             ->whereHas('workerServices', fn ($query) => $query
                 ->where('is_active', true)

@@ -1,21 +1,24 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, reactive } from 'vue';
 import { toast } from 'vue-sonner';
 import AppButton from '../../components/common/AppButton.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import FormTextarea from '../../components/forms/FormTextarea.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerBookingRequestsStore } from '../../stores/worker/bookingRequests';
 
 const bookingRequestsStore = useWorkerBookingRequestsStore();
+const cancellationReasons = reactive({});
 
 const statusOptions = [
     { label: 'All requests', value: '' },
     { label: 'Pending', value: 'pending' },
     { label: 'Accepted', value: 'accepted' },
     { label: 'Rejected', value: 'rejected' },
+    { label: 'Cancelled', value: 'cancelled' },
     { label: 'Selected', value: 'selected' },
     { label: 'Not selected', value: 'not_selected' },
 ];
@@ -43,7 +46,21 @@ useDebouncedWatch(
 
 async function respond(bookingRequest, status) {
     try {
-        await bookingRequestsStore.respond(bookingRequest.id, status);
+        const payload = { status };
+
+        if (status === 'cancelled') {
+            const reason = (cancellationReasons[bookingRequest.id] || '').trim();
+
+            if (! reason) {
+                toast.error('Please add a cancellation reason');
+                return;
+            }
+
+            payload.response_reason = reason;
+        }
+
+        await bookingRequestsStore.respond(bookingRequest.id, payload);
+        delete cancellationReasons[bookingRequest.id];
         toast.success(`Request ${status}`);
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to update request');
@@ -96,17 +113,30 @@ onMounted(load);
                             </p>
                         </div>
 
-                        <div v-if="bookingRequest.status === 'pending'" class="grid w-full grid-cols-2 gap-2 sm:w-64">
-                            <AppButton icon="pi-check" :loading="bookingRequestsStore.saving" @click="respond(bookingRequest, 'accepted')">Accept</AppButton>
-                            <button
-                                type="button"
-                                class="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
-                                :disabled="bookingRequestsStore.saving"
-                                @click="respond(bookingRequest, 'rejected')"
-                            >
-                                <i class="pi pi-times" aria-hidden="true"></i>
-                                Reject
-                            </button>
+                        <div v-if="bookingRequest.status === 'pending'" class="grid w-full gap-2 sm:w-80">
+                            <FormTextarea
+                                :id="`worker_request_cancel_reason_${bookingRequest.id}`"
+                                v-model="cancellationReasons[bookingRequest.id]"
+                                label="Cancellation reason"
+                                rows="3"
+                                placeholder="Tell the customer why you cannot take this request"
+                            />
+                            <div class="grid grid-cols-2 gap-2">
+                                <AppButton icon="pi-check" size="sm" :loading="bookingRequestsStore.saving" @click="respond(bookingRequest, 'accepted')">Accept</AppButton>
+                                <button
+                                    type="button"
+                                    class="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                    :disabled="bookingRequestsStore.saving"
+                                    @click="respond(bookingRequest, 'cancelled')"
+                                >
+                                    <i class="pi pi-ban" aria-hidden="true"></i>
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-else-if="bookingRequest.response_reason" class="w-full rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300 lg:max-w-sm">
+                            {{ bookingRequest.response_reason }}
                         </div>
                     </div>
                 </article>

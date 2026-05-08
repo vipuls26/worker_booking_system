@@ -27,8 +27,7 @@ class CustomerWorkerSearchTest extends TestCase
         WorkerProfile::factory()->create([
             'user_id' => $worker->id,
             'city' => 'Mumbai',
-            'latitude' => 19.076,
-            'longitude' => 72.8777,
+            'is_verified' => true,
         ]);
 
         WorkerService::factory()->create([
@@ -57,12 +56,30 @@ class CustomerWorkerSearchTest extends TestCase
         Sanctum::actingAs($this->customerUser());
 
         $worker = $this->workerUser();
-        WorkerProfile::factory()->create(['user_id' => $worker->id]);
+        WorkerProfile::factory()->create([
+            'user_id' => $worker->id,
+            'is_verified' => true,
+        ]);
 
         $this->getJson("/api/customer/workers/{$worker->id}")
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.worker.id', $worker->id);
+    }
+
+    public function test_customer_can_sort_workers_by_experience(): void
+    {
+        Sanctum::actingAs($this->customerUser());
+
+        $service = Service::factory()->create();
+        $juniorWorker = $this->searchableWorker($service, 2);
+        $seniorWorker = $this->searchableWorker($service, 12);
+
+        $this->getJson('/api/customer/workers?sort=experience')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.workers.0.id', $seniorWorker->id)
+            ->assertJsonPath('data.workers.1.id', $juniorWorker->id);
     }
 
     public function test_worker_cannot_access_customer_worker_search(): void
@@ -80,7 +97,7 @@ class CustomerWorkerSearchTest extends TestCase
 
         return User::factory()
             ->for(Role::where('slug', 'worker')->firstOrFail())
-            ->create();
+            ->create(['is_verified' => true]);
     }
 
     private function customerUser(): User
@@ -89,6 +106,26 @@ class CustomerWorkerSearchTest extends TestCase
 
         return User::factory()
             ->for(Role::where('slug', 'customer')->firstOrFail())
-            ->create();
+            ->create(['is_verified' => true]);
+    }
+
+    private function searchableWorker(Service $service, int $experienceYears): User
+    {
+        $worker = $this->workerUser();
+
+        WorkerProfile::factory()->create([
+            'user_id' => $worker->id,
+            'experience_years' => $experienceYears,
+            'is_verified' => true,
+        ]);
+
+        WorkerService::factory()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'is_active' => true,
+            'approval_status' => WorkerService::StatusApproved,
+        ]);
+
+        return $worker;
     }
 }

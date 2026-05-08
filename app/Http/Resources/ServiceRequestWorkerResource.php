@@ -28,6 +28,7 @@ class ServiceRequestWorkerResource extends JsonResource
             'quoted_price' => $this->quoted_price,
             'minimum_hours' => $this->minimum_hours,
             'status' => $this->status,
+            'response_reason' => $this->response_reason,
             'responded_at' => $this->responded_at?->toISOString(),
             'worker' => new WorkerSearchResource($this->whenLoaded('worker')),
             'worker_service' => new WorkerServiceResource($this->whenLoaded('workerService')),

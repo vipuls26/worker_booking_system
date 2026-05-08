@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['service_request_id', 'worker_id', 'worker_service_id', 'pricing_type', 'quoted_price', 'minimum_hours', 'status', 'responded_at'])]
+#[Fillable(['service_request_id', 'worker_id', 'worker_service_id', 'pricing_type', 'quoted_price', 'minimum_hours', 'status', 'response_reason', 'responded_at'])]
 class ServiceRequestWorker extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -16,6 +16,8 @@ class ServiceRequestWorker extends Model
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_CANCELLED = 'cancelled';
 
     public const STATUS_SELECTED = 'selected';
 

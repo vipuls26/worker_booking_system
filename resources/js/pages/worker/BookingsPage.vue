@@ -17,6 +17,7 @@ const bookingsStore = useWorkerBookingsStore();
 const expandedBookingId = ref(null);
 const reviewingBookingId = ref(null);
 const rejectionReason = ref('');
+const cancellationReasons = reactive({});
 const reviewForm = reactive({
     rating: 0,
     review: '',
@@ -36,18 +37,29 @@ function actionsFor(status) {
         return [
             { label: 'Accept', status: 'accepted', icon: 'pi-check' },
             { label: 'Reject', status: 'rejected', icon: 'pi-times', danger: true },
+            { label: 'Cancel', status: 'cancelled', icon: 'pi-ban', danger: true },
         ];
     }
 
     if (['accepted', 'confirmed'].includes(status)) {
-        return [{ label: 'Start work', status: 'in_progress', icon: 'pi-play' }];
+        return [
+            { label: 'Start work', status: 'in_progress', icon: 'pi-play' },
+            { label: 'Cancel', status: 'cancelled', icon: 'pi-ban', danger: true },
+        ];
     }
 
     if (status === 'in_progress') {
-        return [{ label: 'Complete', status: 'completed', icon: 'pi-flag' }];
+        return [
+            { label: 'Complete', status: 'completed', icon: 'pi-flag' },
+            { label: 'Cancel', status: 'cancelled', icon: 'pi-ban', danger: true },
+        ];
     }
 
     return [];
+}
+
+function canCancel(status) {
+    return ['pending', 'accepted', 'confirmed', 'in_progress'].includes(status);
 }
 
 async function load(page = 1) {
@@ -71,9 +83,21 @@ async function updateStatus(booking, status) {
             payload.rejection_reason = rejectionReason.value || 'Worker rejected the booking.';
         }
 
+        if (status === 'cancelled') {
+            const reason = (cancellationReasons[booking.id] || '').trim();
+
+            if (! reason) {
+                toast.error('Please add a cancellation reason');
+                return;
+            }
+
+            payload.cancelled_reason = reason;
+        }
+
         await bookingsStore.updateStatus(booking.id, payload);
         toast.success('Booking updated');
         rejectionReason.value = '';
+        delete cancellationReasons[booking.id];
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to update booking');
     }
@@ -157,6 +181,15 @@ onMounted(load);
                                 class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
                                 placeholder="Reject reason"
                             >
+                            <FormTextarea
+                                v-if="canCancel(booking.status)"
+                                :id="`worker_booking_cancel_reason_${booking.id}`"
+                                v-model="cancellationReasons[booking.id]"
+                                label="Cancellation reason"
+                                rows="3"
+                                placeholder="Tell the customer why you need to cancel"
+                                required
+                            />
                             <div v-for="action in actionsFor(booking.status)" :key="action.status">
                                 <button
                                     v-if="action.danger"

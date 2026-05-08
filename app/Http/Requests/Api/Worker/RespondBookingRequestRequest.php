@@ -15,7 +15,8 @@ class RespondBookingRequestRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::in(['accepted', 'rejected'])],
+            'status' => ['required', Rule::in(['accepted', 'rejected', 'cancelled'])],
+            'response_reason' => ['nullable', 'required_if:status,cancelled', 'string', 'max:1000'],
         ];
     }
 }

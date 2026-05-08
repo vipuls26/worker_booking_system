@@ -8,6 +8,8 @@ import RatingStars from '../../components/common/RatingStars.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import FormTextarea from '../../components/forms/FormTextarea.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerBookingsStore } from '../../stores/worker/bookings';
 
@@ -56,6 +58,11 @@ async function load(page = 1) {
     }
 }
 
+useDebouncedWatch(
+    () => bookingsStore.filters.status,
+    () => load(),
+);
+
 async function updateStatus(booking, status) {
     try {
         const payload = { status };
@@ -101,11 +108,8 @@ onMounted(load);
     <DashboardLayout title="Manage Bookings">
         <div class="space-y-5">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="grid gap-4 sm:grid-cols-[240px_1fr] sm:items-end">
+                <div class="max-w-sm">
                     <FormSelect id="worker_booking_status" v-model="bookingsStore.filters.status" label="Status" :options="statusOptions" option-label="label" option-value="value" />
-                    <div class="sm:w-36">
-                        <AppButton icon="pi-filter" @click="load()">Filter</AppButton>
-                    </div>
                 </div>
             </section>
 
@@ -130,6 +134,19 @@ onMounted(load);
                             </p>
                             <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ booking.issue_description }}</p>
                             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ booking.address }}</p>
+                            <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                                <span class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-white/10 dark:text-gray-200">
+                                    Earning ₹{{ booking.worker_earning }}
+                                </span>
+                                <span
+                                    class="rounded-full px-2.5 py-1 capitalize"
+                                    :class="booking.payment_status === 'paid'
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'"
+                                >
+                                    {{ booking.payment_status || 'unpaid' }}
+                                </span>
+                            </div>
                         </div>
 
                         <div class="flex flex-col gap-2 sm:w-72">
@@ -204,6 +221,7 @@ onMounted(load);
                     <div v-if="expandedBookingId === booking.id" class="mt-5">
                         <BookingTimeline :timeline="booking.timeline" />
                     </div>
+
                 </article>
             </div>
 

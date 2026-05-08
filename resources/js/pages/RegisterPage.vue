@@ -29,7 +29,7 @@ const form = reactive({
 onMounted(async () => {
     try {
         const response = await fetchRoles();
-        roles.value = response.data.data.roles;
+        roles.value = response.data.data.roles.filter((role) => role.slug !== 'admin');
         form.role_id = roles.value.find((role) => role.slug === 'customer')?.id || roles.value[0]?.id || '';
     } catch {
         toast.error('Unable to load roles');

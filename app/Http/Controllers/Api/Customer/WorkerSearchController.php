@@ -40,7 +40,12 @@ class WorkerSearchController extends Controller
             'data' => [
                 'worker' => new WorkerSearchResource($worker),
                 'availability' => $this->workers
-                    ->availabilityForDetails($worker, $request->validated('available_date'), $request->integer('slot_minutes', 60))
+                    ->availabilityForDetails(
+                        worker: $worker,
+                        date: $request->validated('available_date'),
+                        slotMinutes: $request->integer('slot_minutes', 60),
+                        serviceId: $request->integer('service_id') ?: null,
+                    )
                     ->values(),
             ],
         ]);

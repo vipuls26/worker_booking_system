@@ -10,6 +10,21 @@ const notificationsStore = useNotificationsStore();
 const isOpen = ref(false);
 const recentNotifications = computed(() => notificationsStore.notifications.slice(0, 5));
 
+function notificationIcon(notification) {
+    const icons = {
+        booking_confirmed: 'pi-check-circle',
+        booking_received: 'pi-inbox',
+        booking_accepted: 'pi-thumbs-up',
+        booking_rejected: 'pi-times-circle',
+        booking_cancelled: 'pi-ban',
+        work_started: 'pi-play',
+        work_completed: 'pi-verified',
+        review_received: 'pi-star-fill',
+    };
+
+    return icons[notification.event] || 'pi-bell';
+}
+
 async function load() {
     try {
         await notificationsStore.fetch(1, 5);
@@ -38,6 +53,24 @@ async function markAll() {
     }
 }
 
+async function removeNotification(notification) {
+    try {
+        await notificationsStore.remove(notification.id);
+        toast.success('Notification cleared');
+    } catch {
+        toast.error('Unable to clear notification');
+    }
+}
+
+async function clearAll() {
+    try {
+        await notificationsStore.clearAll();
+        toast.success('Notifications cleared');
+    } catch {
+        toast.error('Unable to clear notifications');
+    }
+}
+
 onMounted(load);
 </script>
 
@@ -45,7 +78,7 @@ onMounted(load);
     <div class="relative">
         <button
             type="button"
-            class="relative inline-flex size-10 items-center justify-center rounded-md border border-gray-300 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10"
+            class="relative inline-flex size-10 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
             aria-label="Notifications"
             @click="isOpen = !isOpen"
         >
@@ -55,12 +88,17 @@ onMounted(load);
             </span>
         </button>
 
-        <div v-if="isOpen" class="fixed inset-x-4 top-16 z-30 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 sm:absolute sm:inset-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
-            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/10">
+        <div v-if="isOpen" class="fixed inset-x-4 top-16 z-30 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-blue-100 dark:bg-gray-900 dark:ring-white/10 sm:absolute sm:inset-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
+            <div class="flex items-center justify-between border-b border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-white/10 dark:bg-gray-950">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h2>
-                <button type="button" class="text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" @click="markAll">
-                    Mark all read
-                </button>
+                <div class="flex items-center gap-3">
+                    <button type="button" class="text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" @click="markAll">
+                        Mark read
+                    </button>
+                    <button type="button" class="text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" @click="clearAll">
+                        Clear
+                    </button>
+                </div>
             </div>
 
             <div v-if="notificationsStore.loading" class="p-4">
@@ -71,26 +109,35 @@ onMounted(load);
                 No notifications yet.
             </div>
 
-            <div v-else class="max-h-[70vh] divide-y divide-gray-100 overflow-y-auto dark:divide-white/10 sm:max-h-96">
-                <button
+            <div v-else class="max-h-[70vh] divide-y divide-blue-50 overflow-y-auto dark:divide-white/10 sm:max-h-96">
+                <div
                     v-for="notification in recentNotifications"
                     :key="notification.id"
-                    type="button"
-                    class="block w-full px-4 py-3 text-left transition hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-blue-50/50 dark:hover:bg-white/5"
                     :class="notification.is_read ? '' : 'bg-blue-50/60 dark:bg-blue-500/10'"
-                    @click="openNotification(notification)"
                 >
-                    <div class="flex items-start gap-3">
-                        <span class="mt-1 size-2 rounded-full" :class="notification.is_read ? 'bg-gray-300 dark:bg-gray-700' : 'bg-blue-600'"></span>
-                        <div class="min-w-0 flex-1">
+                    <button type="button" class="flex min-w-0 flex-1 items-start gap-3 text-left" @click="openNotification(notification)">
+                        <span class="flex size-9 shrink-0 items-center justify-center rounded-md" :class="notification.is_read ? 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400' : 'bg-blue-600 text-white'">
+                            <i :class="['pi', notificationIcon(notification), 'text-sm']" aria-hidden="true"></i>
+                        </span>
+                        <span class="min-w-0 flex-1">
                             <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ notification.title }}</p>
                             <p class="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{{ notification.message }}</p>
-                        </div>
-                    </div>
-                </button>
+                            <p v-if="notification.url" class="mt-1 text-xs font-semibold text-blue-600 dark:text-blue-300">Open related item</p>
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                        aria-label="Clear notification"
+                        @click="removeNotification(notification)"
+                    >
+                        <i class="pi pi-trash" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
 
-            <button type="button" class="block w-full border-t border-gray-200 px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5" @click="router.push('/notifications'); isOpen = false">
+            <button type="button" class="block w-full border-t border-blue-100 px-4 py-3 text-center text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5" @click="router.push('/notifications'); isOpen = false">
                 View all
             </button>
         </div>

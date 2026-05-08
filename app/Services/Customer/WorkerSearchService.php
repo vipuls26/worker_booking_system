@@ -6,6 +6,7 @@ use App\Models\Booking;
 use App\Models\ServiceRequest;
 use App\Models\ServiceRequestWorker;
 use App\Models\User;
+use App\Models\WorkerService;
 use App\Services\Worker\AvailabilityCheckerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -149,17 +150,20 @@ class WorkerSearchService
         }
 
         $time = $request->string('available_time')->toString();
+        $durationMinutes = max(15, $request->integer('slot_minutes', 60));
 
-        $query->whereIn('users.id', function ($query) use ($request, $time): void {
+        $query->whereIn('users.id', function ($query) use ($request, $time, $durationMinutes): void {
             $query
                 ->select('worker_id')
                 ->from('worker_schedules')
                 ->where('day_of_week', CarbonImmutable::parse($request->string('available_date')->toString())->dayOfWeek)
                 ->where('is_off_day', false)
-                ->when($time !== '', function ($query) use ($time): void {
+                ->when($time !== '', function ($query) use ($time, $durationMinutes): void {
+                    $endTime = CarbonImmutable::parse($time)->addMinutes($durationMinutes)->format('H:i');
+
                     $query
                         ->where('start_time', '<=', $time)
-                        ->where('end_time', '>', $time);
+                        ->where('end_time', '>=', $endTime);
                 });
         });
 
@@ -167,14 +171,22 @@ class WorkerSearchService
             return;
         }
 
-        $query->whereDoesntHave('workerBookings', function ($query) use ($request, $time): void {
+        $endTime = CarbonImmutable::parse($request->string('available_date')->toString().' '.$time)
+            ->addMinutes($durationMinutes)
+            ->format('H:i:s');
+
+        $query->whereDoesntHave('workerBookings', function ($query) use ($request, $time, $endTime): void {
             $query
                 ->whereDate('booking_date', $request->string('available_date')->toString())
                 ->whereIn('status', Booking::ActiveStatuses)
-                ->where('booking_time', $time);
+                ->where(function ($query) use ($time, $endTime): void {
+                    $query
+                        ->where('start_time', '<', $endTime)
+                        ->where('end_time', '>', $time);
+                });
         });
 
-        $query->whereNotIn('users.id', function ($query) use ($request, $time): void {
+        $query->whereNotIn('users.id', function ($query) use ($request, $time, $endTime): void {
             $query
                 ->select('service_request_workers.worker_id')
                 ->from('service_request_workers')
@@ -182,7 +194,8 @@ class WorkerSearchService
                 ->where('service_request_workers.status', ServiceRequestWorker::STATUS_ACCEPTED)
                 ->where('service_requests.status', ServiceRequest::STATUS_OPEN)
                 ->whereDate('service_requests.requested_date', $request->string('available_date')->toString())
-                ->where('service_requests.start_time', $time);
+                ->where('service_requests.start_time', '<', $endTime)
+                ->where('service_requests.end_time', '>', $time);
         });
     }
 
@@ -205,14 +218,19 @@ class WorkerSearchService
     }
 
     /**
-     * @return Collection<int, array{time: string, available: bool}>
+     * @return Collection<int, array<string, mixed>>
      */
-    public function availabilityForDetails(User $worker, ?string $date, int $slotMinutes = 60): Collection
+    public function availabilityForDetails(User $worker, ?string $date, int $slotMinutes = 60, ?int $serviceId = null): Collection
     {
         if (! $date) {
             return collect();
         }
 
-        return collect($this->availability->slotsForDate($worker, $date, $slotMinutes));
+        $workerService = $serviceId
+            ? $worker->workerServices
+                ->first(fn (WorkerService $workerService): bool => (int) $workerService->service_id === $serviceId)
+            : null;
+
+        return collect($this->availability->slotsForDate($worker, $date, $slotMinutes, $workerService));
     }
 }

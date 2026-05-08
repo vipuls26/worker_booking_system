@@ -3,6 +3,7 @@
 namespace App\Events;
 
 use App\Models\Booking;
+use App\Models\User;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -15,5 +16,11 @@ class BookingStatusChanged implements ShouldDispatchAfterCommit
     /**
      * Create a new event instance.
      */
-    public function __construct(public Booking $booking, public string $oldStatus, public string $newStatus) {}
+    public function __construct(
+        public Booking $booking,
+        public string $oldStatus,
+        public string $newStatus,
+        public ?User $actor = null,
+        public ?string $reason = null,
+    ) {}
 }

@@ -8,6 +8,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 import { useAdminServicesStore } from '../../stores/admin/services';
 
@@ -26,6 +27,11 @@ async function load(page = 1) {
         toast.error('Unable to load service categories');
     }
 }
+
+useDebouncedWatch(
+    () => servicesStore.filters.status,
+    () => load(),
+);
 
 function openCreateModal() {
     clearApiErrors();
@@ -112,12 +118,11 @@ onMounted(() => load());
                     <SearchFilter v-model="servicesStore.filters.search" placeholder="Search by name, slug, or description" @search="load()" />
                     <select
                         v-model="servicesStore.filters.status"
-                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
-                        @change="load()"
+                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"
                     >
-                        <option value="all">All statuses</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+                        <option value="all" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">All statuses</option>
+                        <option value="active" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Active</option>
+                        <option value="inactive" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Inactive</option>
                     </select>
                 </div>
             </AppPanel>

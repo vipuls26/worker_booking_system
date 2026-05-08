@@ -7,6 +7,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerServicesStore } from '../../stores/worker/services';
 
@@ -34,6 +35,15 @@ async function silentRefresh() {
 
     await load(workerServicesStore.meta.current_page || 1, { silent: true });
 }
+
+useDebouncedWatch(
+    () => [
+        workerServicesStore.filters.pricing_type,
+        workerServicesStore.filters.status,
+        workerServicesStore.filters.approval_status,
+    ],
+    () => load(),
+);
 
 function refreshWhenVisible() {
     if (document.visibilityState === 'visible') {
@@ -131,33 +141,30 @@ onBeforeUnmount(() => {
                     <SearchFilter v-model="workerServicesStore.filters.search" placeholder="Search services" @search="load()" />
                     <select
                         v-model="workerServicesStore.filters.pricing_type"
-                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
-                        @change="load()"
+                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"
                     >
-                        <option value="">All pricing</option>
-                        <option value="fixed">Fixed price</option>
-                        <option value="hourly">Hourly price</option>
+                        <option value="" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">All pricing</option>
+                        <option value="fixed" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Fixed price</option>
+                        <option value="hourly" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Hourly price</option>
                     </select>
                     <select
                         v-model="workerServicesStore.filters.status"
-                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
-                        @change="load()"
+                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"
                     >
-                        <option value="all">All statuses</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+                        <option value="all" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">All statuses</option>
+                        <option value="active" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Active</option>
+                        <option value="inactive" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Inactive</option>
                     </select>
                 </div>
                 <div class="mt-3 max-w-xs">
                     <select
                         v-model="workerServicesStore.filters.approval_status"
-                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
-                        @change="load()"
+                        class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"
                     >
-                        <option value="">All approvals</option>
-                        <option value="pending">Pending approval</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
+                        <option value="" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">All approvals</option>
+                        <option value="pending" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Pending approval</option>
+                        <option value="approved" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Approved</option>
+                        <option value="rejected" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Rejected</option>
                     </select>
                 </div>
             </section>

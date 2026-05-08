@@ -7,10 +7,12 @@ use App\Http\Requests\Api\ReviewIndexRequest;
 use App\Http\Requests\Api\StoreReviewRequest;
 use App\Http\Resources\ReviewResource;
 use App\Models\Booking;
+use App\Models\Review;
 use App\Models\User;
 use App\Services\ReviewService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class ReviewController extends Controller
 {
@@ -18,6 +20,8 @@ class ReviewController extends Controller
 
     public function store(StoreReviewRequest $request, Booking $booking): JsonResponse
     {
+        Gate::authorize('createForWorker', [Review::class, $booking]);
+
         return response()->json([
             'success' => true,
             'message' => 'Review submitted successfully',
@@ -29,6 +33,8 @@ class ReviewController extends Controller
 
     public function storeForCustomer(StoreReviewRequest $request, Booking $booking): JsonResponse
     {
+        Gate::authorize('createForCustomer', [Review::class, $booking]);
+
         return response()->json([
             'success' => true,
             'message' => 'Customer feedback submitted successfully',

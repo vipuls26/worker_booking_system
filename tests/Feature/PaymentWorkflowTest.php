@@ -1,0 +1,76 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Booking;
+use App\Models\Payment;
+use App\Models\Role;
+use App\Models\Service;
+use App\Models\ServiceRequest;
+use App\Models\User;
+use Database\Seeders\RoleSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class PaymentWorkflowTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_customer_can_pay_confirmed_booking_and_commission_is_recorded(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $customer = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create(['is_verified' => true]);
+        $worker = User::factory()
+            ->for(Role::where('slug', 'worker')->firstOrFail())
+            ->create(['is_verified' => true]);
+        $service = Service::factory()->create();
+        $booking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'selected_worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'quoted_amount' => 1000,
+            'quoted_commission_rate' => 10,
+            'quoted_platform_commission' => 100,
+            'quoted_worker_earning' => 900,
+            'status' => Booking::STATUS_CONFIRMED,
+            'payment_status' => Booking::PAYMENT_UNPAID,
+        ]);
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'selected_worker_id' => $worker->id,
+            'booking_id' => $booking->id,
+            'status' => ServiceRequest::STATUS_WORKER_SELECTED,
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson("/api/customer/bookings/{$serviceRequest->id}/pay", [
+            'provider' => 'manual',
+            'transaction_reference' => 'TEST-PAY-001',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.payment.amount', '1000.00')
+            ->assertJsonPath('data.payment.platform_commission', '100.00')
+            ->assertJsonPath('data.payment.worker_earning', '900.00')
+            ->assertJsonPath('data.booking.booking.payment_status', Booking::PAYMENT_PAID);
+
+        $this->assertDatabaseHas('payments', [
+            'booking_id' => $booking->id,
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'status' => Payment::STATUS_PAID,
+            'transaction_reference' => 'TEST-PAY-001',
+        ]);
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'payment_status' => Booking::PAYMENT_PAID,
+        ]);
+    }
+}

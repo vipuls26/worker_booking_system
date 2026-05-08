@@ -24,9 +24,31 @@ class AuthApiTest extends TestCase
         $this->getJson('/api/roles')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.roles.0.slug', 'admin')
-            ->assertJsonPath('data.roles.1.slug', 'customer')
-            ->assertJsonPath('data.roles.2.slug', 'worker');
+            ->assertJsonPath('data.roles.0.slug', 'customer')
+            ->assertJsonPath('data.roles.1.slug', 'worker')
+            ->assertJsonMissingPath('data.roles.2')
+            ->assertJsonMissing([
+                'slug' => 'admin',
+            ]);
+    }
+
+    public function test_public_registration_rejects_admin_role(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $adminRole = Role::where('slug', 'admin')->firstOrFail();
+
+        $this->postJson('/api/auth/register', [
+            'role_id' => $adminRole->id,
+            'name' => 'Jane Admin',
+            'email' => 'admin-register@example.com',
+            'phone' => '9000000011',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonValidationErrors(['role_id']);
     }
 
     public function test_user_can_register_and_receive_token(): void

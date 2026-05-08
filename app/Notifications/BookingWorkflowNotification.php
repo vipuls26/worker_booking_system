@@ -21,6 +21,7 @@ class BookingWorkflowNotification extends Notification implements ShouldQueue
         private readonly string $title,
         private readonly string $message,
     ) {
+        $this->booking->loadMissing('service');
         $this->afterCommit();
     }
 
@@ -46,6 +47,7 @@ class BookingWorkflowNotification extends Notification implements ShouldQueue
             'title' => $this->title,
             'message' => $this->message,
             'booking_id' => $this->booking->id,
+            'service_request_id' => $this->booking->service_request_id,
             'service_id' => $this->booking->service_id,
             'service_name' => $this->booking->service?->name,
             'status' => $this->booking->status,
@@ -65,7 +67,7 @@ class BookingWorkflowNotification extends Notification implements ShouldQueue
         }
 
         if (method_exists($notifiable, 'hasRole') && $notifiable->hasRole('customer')) {
-            return '/customer/bookings/'.$this->booking->id;
+            return '/customer/bookings/'.($this->booking->service_request_id ?: $this->booking->id);
         }
 
         return '/admin/bookings';

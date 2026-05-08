@@ -15,7 +15,12 @@ class RoleController extends Controller
             'success' => true,
             'message' => 'Roles retrieved',
             'data' => [
-                'roles' => RoleResource::collection(Role::query()->orderBy('id')->get()),
+                'roles' => RoleResource::collection(
+                    Role::query()
+                        ->whereIn('slug', ['customer', 'worker'])
+                        ->orderBy('id')
+                        ->get()
+                ),
             ],
         ]);
     }

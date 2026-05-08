@@ -3,11 +3,14 @@
 namespace App\Services\Worker;
 
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Review;
 use App\Models\User;
+use App\Models\WorkerPayout;
 use App\Models\WorkerSchedule;
 use App\Models\WorkerService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,18 +21,25 @@ class DashboardAnalyticsService
      */
     public function summary(User $worker): array
     {
+        $earnings = $this->paidEarnings($worker);
+        $paidOut = $this->paidOut($worker);
+        $pendingPayout = max(round($earnings - $paidOut, 2), 0);
+        $completedBookingsCount = $this->completedBookings($worker)->count();
+        $averageRating = round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2);
+
         return [
-            'earnings' => round((float) $this->completedBookings($worker)->sum('worker_earning'), 2),
-            'completed_bookings' => $this->completedBookings($worker)->count(),
+            'earnings' => $earnings,
+            'pending_payout' => $pendingPayout,
+            'completed_bookings' => $completedBookingsCount,
             'cancellations' => $worker->workerBookings()->where('status', Booking::STATUS_CANCELLED)->count(),
-            'average_rating' => round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2),
+            'average_rating' => $averageRating,
             'reviews_count' => $worker->workerReviews()->count(),
             'approved_services_count' => $worker->workerServices()
                 ->where('approval_status', WorkerService::StatusApproved)
                 ->where('is_active', true)
                 ->whereHas('service', fn ($query) => $query->where('is_active', true))
                 ->count(),
-            'cards' => $this->cards($worker),
+            'cards' => $this->cards($earnings, $pendingPayout, $completedBookingsCount, $averageRating),
             'earnings_chart' => $this->monthlyEarnings($worker),
             'booking_statuses' => $this->bookingStatuses($worker),
             'top_services' => $this->topServices($worker),
@@ -41,13 +51,13 @@ class DashboardAnalyticsService
     /**
      * @return array<int, array{label: string, value: float|int, icon: string}>
      */
-    private function cards(User $worker): array
+    private function cards(float $earnings, float $pendingPayout, int $completedBookingsCount, float $averageRating): array
     {
         return [
-            ['label' => 'Earnings', 'value' => round((float) $this->completedBookings($worker)->sum('worker_earning'), 2), 'icon' => 'pi-indian-rupee'],
-            ['label' => 'Completed bookings', 'value' => $this->completedBookings($worker)->count(), 'icon' => 'pi-check-circle'],
-            ['label' => 'Cancellations', 'value' => $worker->workerBookings()->where('status', Booking::STATUS_CANCELLED)->count(), 'icon' => 'pi-times-circle'],
-            ['label' => 'Average rating', 'value' => round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2), 'icon' => 'pi-star-fill'],
+            ['label' => 'Paid by customers', 'value' => $earnings, 'icon' => 'pi-indian-rupee'],
+            ['label' => 'Available for payout', 'value' => $pendingPayout, 'icon' => 'pi-wallet'],
+            ['label' => 'Completed bookings', 'value' => $completedBookingsCount, 'icon' => 'pi-check-circle'],
+            ['label' => 'Average rating', 'value' => $averageRating, 'icon' => 'pi-star-fill'],
         ];
     }
 
@@ -56,20 +66,21 @@ class DashboardAnalyticsService
      */
     private function monthlyEarnings(User $worker): Collection
     {
-        $monthExpression = $this->monthExpression('booking_date');
+        $monthExpression = $this->monthExpression('paid_at');
 
-        return $worker->workerBookings()
+        return Payment::query()
+            ->where('worker_id', $worker->id)
+            ->where('status', Payment::STATUS_PAID)
             ->selectRaw($monthExpression.' as label')
             ->selectRaw('SUM(worker_earning) as value')
-            ->where('status', Booking::STATUS_COMPLETED)
-            ->whereNotNull('booking_date')
+            ->whereNotNull('paid_at')
             ->groupBy('label')
             ->orderBy('label')
             ->limit(12)
             ->get()
-            ->map(fn (Booking $booking): array => [
-                'label' => (string) $booking->label,
-                'value' => round((float) $booking->value, 2),
+            ->map(fn (Payment $payment): array => [
+                'label' => (string) $payment->label,
+                'value' => round((float) $payment->value, 2),
             ]);
     }
 
@@ -95,19 +106,33 @@ class DashboardAnalyticsService
      */
     private function topServices(User $worker): Collection
     {
-        return $worker->workerBookings()
+        $bookingStats = $worker->workerBookings()
             ->join('services', 'services.id', '=', 'bookings.service_id')
-            ->select('services.name')
+            ->select('services.id', 'services.name')
             ->selectRaw('COUNT(*) as bookings_count')
-            ->selectRaw('SUM(CASE WHEN bookings.status = ? THEN bookings.worker_earning ELSE 0 END) as earnings', [Booking::STATUS_COMPLETED])
             ->groupBy('services.id', 'services.name')
             ->orderByDesc('bookings_count')
             ->limit(5)
             ->get()
+            ->keyBy('id');
+
+        $earningStats = Payment::query()
+            ->join('bookings', 'bookings.id', '=', 'payments.booking_id')
+            ->select('bookings.service_id')
+            ->selectRaw('SUM(payments.worker_earning) as earnings')
+            ->where('payments.worker_id', $worker->id)
+            ->where('payments.status', Payment::STATUS_PAID)
+            ->whereIn('bookings.service_id', $bookingStats->keys())
+            ->groupBy('bookings.service_id')
+            ->get()
+            ->keyBy('service_id');
+
+        return $bookingStats
+            ->values()
             ->map(fn ($row): array => [
                 'name' => (string) $row->name,
                 'bookings_count' => (int) $row->bookings_count,
-                'earnings' => round((float) $row->earnings, 2),
+                'earnings' => round((float) $earningStats->get($row->id)?->earnings, 2),
             ]);
     }
 
@@ -129,9 +154,23 @@ class DashboardAnalyticsService
             ]);
     }
 
-    private function completedBookings(User $worker)
+    private function completedBookings(User $worker): HasMany
     {
         return $worker->workerBookings()->where('status', Booking::STATUS_COMPLETED);
+    }
+
+    private function paidEarnings(User $worker): float
+    {
+        return round((float) $worker->workerPayments()
+            ->where('status', Payment::STATUS_PAID)
+            ->sum('worker_earning'), 2);
+    }
+
+    private function paidOut(User $worker): float
+    {
+        return round((float) $worker->workerPayouts()
+            ->where('status', WorkerPayout::STATUS_PAID)
+            ->sum('amount'), 2);
     }
 
     /**

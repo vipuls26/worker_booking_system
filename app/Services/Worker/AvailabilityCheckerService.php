@@ -7,14 +7,15 @@ use App\Models\ServiceRequest;
 use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
+use App\Models\WorkerService;
 use Carbon\CarbonImmutable;
 
 class AvailabilityCheckerService
 {
     /**
-     * @return array<int, array{time: string, available: bool}>
+     * @return array<int, array<string, mixed>>
      */
-    public function slotsForDate(User $worker, string $date, int $slotMinutes = 60): array
+    public function slotsForDate(User $worker, string $date, int $slotMinutes = 60, ?WorkerService $workerService = null): array
     {
         $dateValue = CarbonImmutable::parse($date);
         $dayOfWeek = (int) $dateValue->dayOfWeek;
@@ -30,7 +31,7 @@ class AvailabilityCheckerService
 
         return $schedules
             ->filter(fn (WorkerSchedule $schedule): bool => ! $schedule->is_off_day)
-            ->flatMap(fn (WorkerSchedule $schedule): array => $this->slotsForSchedule($worker, $dateValue, $schedule, $slotMinutes))
+            ->flatMap(fn (WorkerSchedule $schedule): array => $this->slotsForSchedule($worker, $dateValue, $schedule, $slotMinutes, $workerService))
             ->values()
             ->all();
     }
@@ -52,9 +53,9 @@ class AvailabilityCheckerService
     }
 
     /**
-     * @return array<int, array{time: string, available: bool}>
+     * @return array<int, array<string, mixed>>
      */
-    private function slotsForSchedule(User $worker, CarbonImmutable $date, WorkerSchedule $schedule, int $slotMinutes): array
+    private function slotsForSchedule(User $worker, CarbonImmutable $date, WorkerSchedule $schedule, int $slotMinutes, ?WorkerService $workerService): array
     {
         $slots = [];
         $cursor = CarbonImmutable::parse($date->toDateString().' '.$schedule->start_time);
@@ -62,9 +63,19 @@ class AvailabilityCheckerService
 
         while ($cursor->addMinutes($slotMinutes)->lessThanOrEqualTo($scheduleEnd)) {
             $slotEnd = $cursor->addMinutes($slotMinutes);
+            $overlap = $this->overlapReason($worker, $date->toDateString(), $cursor->format('H:i:s'), $slotEnd->format('H:i:s'));
             $slots[] = [
                 'time' => $cursor->format('H:i'),
-                'available' => ! $this->hasBookingOverlap($worker, $date->toDateString(), $cursor->format('H:i:s'), $slotEnd->format('H:i:s')),
+                'start_time' => $cursor->format('H:i'),
+                'end_time' => $slotEnd->format('H:i'),
+                'duration_minutes' => $slotMinutes,
+                'available' => $overlap === null,
+                'reason' => $overlap,
+                'label' => $cursor->format('H:i').' - '.$slotEnd->format('H:i'),
+                'pricing_type' => $workerService?->pricing_type,
+                'price' => $workerService?->price,
+                'minimum_hours' => $workerService?->minimum_hours,
+                'estimated_total' => $workerService ? $this->estimatedTotal($workerService, $slotMinutes) : null,
             ];
             $cursor = $slotEnd;
         }
@@ -74,14 +85,28 @@ class AvailabilityCheckerService
 
     private function hasBookingOverlap(User $worker, string $date, string $startTime, string $endTime): bool
     {
-        return Booking::query()
+        return $this->overlapReason($worker, $date, $startTime, $endTime) !== null;
+    }
+
+    private function overlapReason(User $worker, string $date, string $startTime, string $endTime): ?string
+    {
+        $hasConfirmedBooking = Booking::query()
             ->select(['booking_time', 'start_time', 'end_time'])
             ->where('worker_id', $worker->id)
             ->whereDate('booking_date', $date)
             ->whereIn('status', Booking::ActiveStatuses)
             ->get()
-            ->contains(fn (Booking $booking): bool => $this->overlaps($booking, $date, $startTime, $endTime))
-            || $this->hasAcceptedRequestOverlap($worker, $date, $startTime, $endTime);
+            ->contains(fn (Booking $booking): bool => $this->overlaps($booking, $date, $startTime, $endTime));
+
+        if ($hasConfirmedBooking) {
+            return 'booked';
+        }
+
+        if ($this->hasAcceptedRequestOverlap($worker, $date, $startTime, $endTime)) {
+            return 'reserved';
+        }
+
+        return null;
     }
 
     private function hasAcceptedRequestOverlap(User $worker, string $date, string $startTime, string $endTime): bool
@@ -121,5 +146,16 @@ class AvailabilityCheckerService
         $slotEnd = CarbonImmutable::parse($date.' '.$endTime);
 
         return $bookingStart->lessThan($slotEnd) && $bookingEnd->greaterThan($slotStart);
+    }
+
+    private function estimatedTotal(WorkerService $workerService, int $durationMinutes): float
+    {
+        if ($workerService->pricing_type === WorkerService::PricingHourly) {
+            $hours = max($workerService->minimum_hours ?: 1, (int) ceil($durationMinutes / 60));
+
+            return round((float) $workerService->price * $hours, 2);
+        }
+
+        return (float) $workerService->price;
     }
 }

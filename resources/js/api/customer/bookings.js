@@ -20,6 +20,10 @@ export function selectBookingWorker(id, payload) {
     return http.patch(`/customer/bookings/${id}/select-worker`, payload);
 }
 
+export function payBooking(id, payload = {}) {
+    return http.post(`/customer/bookings/${id}/pay`, payload);
+}
+
 export function submitBookingReview(id, payload) {
     return http.post(`/customer/bookings/${id}/review`, payload);
 }

@@ -20,6 +20,7 @@ export const useCustomerWorkersStore = defineStore('customerWorkers', {
             city: '',
             available_date: '',
             available_time: '',
+            slot_minutes: 60,
             sort: 'relevance',
             per_page: 12,
         },

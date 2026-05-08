@@ -5,6 +5,7 @@ import { toast } from 'vue-sonner';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 
@@ -25,6 +26,11 @@ async function load(page = 1) {
     }
 }
 
+useDebouncedWatch(
+    () => bookingsStore.filters.status,
+    () => load(),
+);
+
 onMounted(() => load());
 </script>
 
@@ -32,7 +38,7 @@ onMounted(() => load());
     <DashboardLayout title="My Requests">
         <div class="space-y-5">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <FormSelect id="booking_status" v-model="bookingsStore.filters.status" label="Status" :options="statuses" option-label="label" option-value="value" @update:model-value="load()" />
+                <FormSelect id="booking_status" v-model="bookingsStore.filters.status" label="Status" :options="statuses" option-label="label" option-value="value" />
             </section>
 
             <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">

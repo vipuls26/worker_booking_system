@@ -5,6 +5,7 @@ import AppButton from '../../components/common/AppButton.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerBookingRequestsStore } from '../../stores/worker/bookingRequests';
 
@@ -35,6 +36,11 @@ async function load(page = 1) {
     }
 }
 
+useDebouncedWatch(
+    () => bookingRequestsStore.filters.status,
+    () => load(),
+);
+
 async function respond(bookingRequest, status) {
     try {
         await bookingRequestsStore.respond(bookingRequest.id, status);
@@ -51,11 +57,8 @@ onMounted(load);
     <DashboardLayout title="Booking Requests">
         <div class="space-y-5">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="grid gap-4 sm:grid-cols-[240px_1fr] sm:items-end">
+                <div class="max-w-sm">
                     <FormSelect id="worker_request_status" v-model="bookingRequestsStore.filters.status" label="Status" :options="statusOptions" option-label="label" option-value="value" />
-                    <div class="sm:w-36">
-                        <AppButton icon="pi-filter" @click="load()">Filter</AppButton>
-                    </div>
                 </div>
             </section>
 
@@ -64,7 +67,7 @@ onMounted(load);
             </div>
 
             <div v-else-if="bookingRequestsStore.bookingRequests.length === 0" class="rounded-lg bg-white p-8 text-center text-sm text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-white/10">
-                No booking requests found.
+                No customer requests found.
             </div>
 
             <div v-else class="space-y-3">
@@ -87,9 +90,13 @@ onMounted(load);
                             </p>
                             <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ bookingRequest.booking?.issue_description }}</p>
                             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ bookingRequest.booking?.address }}</p>
+                            <p class="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
+                                <i class="pi pi-info-circle" aria-hidden="true"></i>
+                                Accept to join the customer's shortlist. Final booking starts only if the customer selects you.
+                            </p>
                         </div>
 
-                        <div v-if="bookingRequest.status === 'pending'" class="flex gap-2 sm:w-64">
+                        <div v-if="bookingRequest.status === 'pending'" class="grid w-full grid-cols-2 gap-2 sm:w-64">
                             <AppButton icon="pi-check" :loading="bookingRequestsStore.saving" @click="respond(bookingRequest, 'accepted')">Accept</AppButton>
                             <button
                                 type="button"

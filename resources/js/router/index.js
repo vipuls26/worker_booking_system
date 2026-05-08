@@ -28,6 +28,8 @@ import AdminUsersPage from '../pages/admin/UsersPage.vue';
 import AdminWorkerVerificationsPage from '../pages/admin/WorkerVerificationsPage.vue';
 import AdminBookingsPage from '../pages/admin/BookingsPage.vue';
 import AdminUnblockRequestsPage from '../pages/admin/UnblockRequestsPage.vue';
+import AdminAuditLogsPage from '../pages/admin/AuditLogsPage.vue';
+import WorkerAccountPage from '../pages/worker/AccountPage.vue';
 
 const routes = [
     { path: '/', redirect: '/login' },
@@ -87,6 +89,12 @@ const routes = [
         meta: { requiresAuth: true, role: 'admin' },
     },
     {
+        path: '/admin/audit-logs',
+        name: 'admin.audit-logs',
+        component: AdminAuditLogsPage,
+        meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
         path: '/worker/dashboard',
         name: 'worker.dashboard',
         component: WorkerDashboard,
@@ -126,6 +134,12 @@ const routes = [
         path: '/worker/reviews',
         name: 'worker.reviews',
         component: WorkerReviewsPage,
+        meta: { requiresAuth: true, role: 'worker', requiresVerified: true },
+    },
+    {
+        path: '/worker/account',
+        name: 'worker.account',
+        component: WorkerAccountPage,
         meta: { requiresAuth: true, role: 'worker', requiresVerified: true },
     },
     {

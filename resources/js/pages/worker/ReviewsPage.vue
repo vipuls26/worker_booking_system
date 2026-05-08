@@ -5,6 +5,7 @@ import PaginationControls from '../../components/common/PaginationControls.vue';
 import RatingStars from '../../components/common/RatingStars.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerReviewsStore } from '../../stores/worker/reviews';
 
@@ -33,6 +34,11 @@ async function load(page = 1) {
     }
 }
 
+useDebouncedWatch(
+    () => [reviewsStore.filters.rating, reviewsStore.filters.sort],
+    () => load(),
+);
+
 onMounted(load);
 </script>
 
@@ -50,8 +56,8 @@ onMounted(load);
                         </div>
                     </div>
                 </div>
-                <FormSelect id="review_rating" v-model="reviewsStore.filters.rating" label="Rating" :options="ratingOptions" option-label="label" option-value="value" @update:model-value="load()" />
-                <FormSelect id="review_sort" v-model="reviewsStore.filters.sort" label="Sort" :options="sortOptions" option-label="label" option-value="value" @update:model-value="load()" />
+                <FormSelect id="review_rating" v-model="reviewsStore.filters.rating" label="Rating" :options="ratingOptions" option-label="label" option-value="value" />
+                <FormSelect id="review_sort" v-model="reviewsStore.filters.sort" label="Sort" :options="sortOptions" option-label="label" option-value="value" />
             </section>
 
             <div v-if="reviewsStore.loading">

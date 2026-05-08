@@ -14,6 +14,19 @@ const route = useRoute();
 const bookingsStore = useCustomerBookingsStore();
 const cancelReason = ref('');
 const booking = computed(() => bookingsStore.booking);
+const officialBooking = computed(() => booking.value?.booking || null);
+const canPayBooking = computed(() => officialBooking.value?.status === 'completed' && officialBooking.value?.payment_status !== 'paid');
+const paymentButtonLabel = computed(() => {
+    if (officialBooking.value?.payment_status === 'paid') {
+        return 'Paid';
+    }
+
+    if (officialBooking.value?.status !== 'completed') {
+        return 'Available after completion';
+    }
+
+    return 'Pay now';
+});
 const acceptedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'accepted') || []);
 const selectedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'selected') || []);
 const comparisonRequests = computed(() => [...selectedRequests.value, ...acceptedRequests.value]);
@@ -47,6 +60,20 @@ async function selectWorker(bookingRequest) {
         toast.success('Worker selected');
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to select worker');
+    }
+}
+
+async function payBooking() {
+    if (! canPayBooking.value) {
+        toast.info('Payment is available after the worker completes the service.');
+        return;
+    }
+
+    try {
+        await bookingsStore.pay(route.params.id, { provider: 'manual' });
+        toast.success('Payment successful');
+    } catch (error) {
+        toast.error(error.response?.data?.message || 'Unable to process payment');
     }
 }
 
@@ -142,11 +169,54 @@ onMounted(load);
                 </div>
             </section>
 
+            <section v-if="officialBooking" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Payment</p>
+                        <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                            {{ officialBooking.payment_status === 'paid' ? 'Payment completed' : 'Pay after service completion' }}
+                        </h3>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Platform commission: ₹{{ officialBooking.platform_commission }} · Worker earning: ₹{{ officialBooking.worker_earning }}
+                        </p>
+                        <p v-if="officialBooking.payment_status !== 'paid' && officialBooking.status !== 'completed'" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                            Payment unlocks when the worker marks this booking as completed.
+                        </p>
+                        <p v-if="officialBooking.latest_payment" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            Transaction {{ officialBooking.latest_payment.transaction_reference }}
+                        </p>
+                    </div>
+
+                    <div class="rounded-lg bg-gray-50 p-4 text-left dark:bg-gray-950 sm:min-w-64">
+                        <p class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Amount</p>
+                        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">₹{{ officialBooking.total_amount }}</p>
+                        <div class="mt-4">
+                            <AppButton
+                                v-if="officialBooking.payment_status !== 'paid'"
+                                type="button"
+                                icon="pi-credit-card"
+                                :loading="bookingsStore.saving"
+                                :disabled="!canPayBooking"
+                                @click="payBooking"
+                            >
+                                {{ paymentButtonLabel }}
+                            </AppButton>
+                            <span v-else class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                <i class="pi pi-check-circle" aria-hidden="true"></i>
+                                Paid
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section v-if="booking.requests?.length" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h3 class="font-semibold text-gray-900 dark:text-white">Worker responses</h3>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose an accepted worker to lock the booking.</p>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ booking.requests.length > 1 ? 'Compare accepted workers' : 'Worker response' }}</h3>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            {{ booking.requests.length > 1 ? 'Choose one accepted worker to create the official booking.' : 'This request was sent to one worker. Confirm them after they accept.' }}
+                        </p>
                     </div>
                     <span v-if="booking.status === 'open'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                         {{ acceptedRequests.length }} accepted
@@ -202,7 +272,7 @@ onMounted(load);
                                     @click="selectWorker(request)"
                                 >
                                     <i class="pi pi-check" aria-hidden="true"></i>
-                                    Select worker
+                                    {{ booking.requests.length > 1 ? 'Select worker' : 'Confirm this worker' }}
                                 </button>
                             </div>
                         </div>
@@ -305,6 +375,7 @@ onMounted(load);
                     <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">Worker has not shared feedback yet.</p>
                 </div>
             </section>
+
         </div>
     </DashboardLayout>
 </template>

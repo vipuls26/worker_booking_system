@@ -84,6 +84,46 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * @return HasMany<Payment, $this>
+     */
+    public function customerPayments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'customer_id');
+    }
+
+    /**
+     * @return HasMany<Payment, $this>
+     */
+    public function workerPayments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'worker_id');
+    }
+
+    /**
+     * @return HasMany<WorkerPayout, $this>
+     */
+    public function workerPayouts(): HasMany
+    {
+        return $this->hasMany(WorkerPayout::class, 'worker_id');
+    }
+
+    /**
+     * @return HasMany<Dispute, $this>
+     */
+    public function openedDisputes(): HasMany
+    {
+        return $this->hasMany(Dispute::class, 'opened_by');
+    }
+
+    /**
+     * @return HasMany<Dispute, $this>
+     */
+    public function assignedDisputes(): HasMany
+    {
+        return $this->hasMany(Dispute::class, 'assigned_admin_id');
+    }
+
+    /**
      * @return HasMany<WorkerService, $this>
      */
     public function workerServices(): HasMany

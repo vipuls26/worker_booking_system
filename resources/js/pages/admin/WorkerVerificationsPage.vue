@@ -8,6 +8,7 @@ import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
@@ -25,6 +26,10 @@ const statusOptions = [
     { id: 'rejected', name: 'Rejected' },
     { id: 'resubmission_requested', name: 'Resubmission requested' },
 ];
+const chipBase = 'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0.5';
+const successChip = `${chipBase} bg-emerald-50 text-emerald-700 shadow-[0_2px_0_#bbf7d0,0_6px_12px_rgba(5,150,105,0.12)] hover:bg-emerald-100 active:shadow-[0_1px_0_#bbf7d0,0_4px_8px_rgba(5,150,105,0.12)] dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-[0_2px_0_rgba(52,211,153,0.18)]`;
+const warningChip = `${chipBase} bg-amber-50 text-amber-700 shadow-[0_2px_0_#fde68a,0_6px_12px_rgba(217,119,6,0.12)] hover:bg-amber-100 active:shadow-[0_1px_0_#fde68a,0_4px_8px_rgba(217,119,6,0.12)] dark:bg-amber-500/10 dark:text-amber-300 dark:shadow-[0_2px_0_rgba(251,191,36,0.18)]`;
+const dangerChip = `${chipBase} bg-red-50 text-red-700 shadow-[0_2px_0_#fecaca,0_6px_12px_rgba(220,38,38,0.12)] hover:bg-red-100 active:shadow-[0_1px_0_#fecaca,0_4px_8px_rgba(220,38,38,0.12)] dark:bg-red-500/10 dark:text-red-300 dark:shadow-[0_2px_0_rgba(248,113,113,0.18)]`;
 
 async function load(page = 1) {
     loading.value = true;
@@ -38,6 +43,11 @@ async function load(page = 1) {
         loading.value = false;
     }
 }
+
+useDebouncedWatch(
+    () => status.value,
+    () => load(),
+);
 
 async function approve(item) {
     await approveWorkerVerification(item.id);
@@ -67,7 +77,7 @@ onMounted(load);
 <template>
     <AdminLayout title="Worker Verification">
         <div class="space-y-4">
-            <div class="max-w-xs"><FormSelect id="verification_status" v-model="status" label="Status" :options="statusOptions" @update:model-value="load()" /></div>
+            <div class="max-w-xs"><FormSelect id="verification_status" v-model="status" label="Status" :options="statusOptions" /></div>
             <AdminTable :columns="[{ key: 'worker', label: 'Worker' }, { key: 'experience', label: 'Experience' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="verifications.length > 0">
                 <tr v-for="item in verifications" :key="item.id">
                     <td class="px-4 py-3">
@@ -82,9 +92,11 @@ onMounted(load);
                     <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{{ item.experience_years }} years</td>
                     <td class="px-4 py-3"><StatusBadge :value="item.status" /></td>
                     <td class="px-4 py-3 text-right">
-                        <button class="text-sm font-medium text-emerald-600" @click="approve(item)">Approve</button>
-                        <button class="ml-3 text-sm font-medium text-amber-600" @click="resubmitting = item">Resubmit</button>
-                        <button class="ml-3 text-sm font-medium text-red-600" @click="rejecting = item">Reject</button>
+                        <div class="flex flex-wrap justify-end gap-2">
+                        <button :class="successChip" @click="approve(item)">Approve</button>
+                        <button :class="warningChip" @click="resubmitting = item">Resubmit</button>
+                        <button :class="dangerChip" @click="rejecting = item">Reject</button>
+                        </div>
                     </td>
                 </tr>
             </AdminTable>

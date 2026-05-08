@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, unverifyAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -8,6 +9,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
@@ -16,11 +18,15 @@ const meta = ref({});
 const search = ref('');
 const role = ref('');
 const deleting = ref(null);
+const blocking = ref(null);
 const roleOptions = [
     { id: '', name: 'All roles' },
     { id: 'customer', name: 'Customer' },
     { id: 'worker', name: 'Worker' },
 ];
+const chipBase = 'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0.5';
+const neutralChip = `${chipBase} bg-blue-50 text-blue-700 shadow-[0_2px_0_#bfdbfe,0_6px_12px_rgba(37,99,235,0.12)] hover:bg-blue-100 active:shadow-[0_1px_0_#bfdbfe,0_4px_8px_rgba(37,99,235,0.12)] dark:bg-blue-500/10 dark:text-blue-300 dark:shadow-[0_2px_0_rgba(59,130,246,0.18)]`;
+const dangerChip = `${chipBase} bg-red-50 text-red-700 shadow-[0_2px_0_#fecaca,0_6px_12px_rgba(220,38,38,0.12)] hover:bg-red-100 active:shadow-[0_1px_0_#fecaca,0_4px_8px_rgba(220,38,38,0.12)] dark:bg-red-500/10 dark:text-red-300 dark:shadow-[0_2px_0_rgba(248,113,113,0.18)]`;
 
 async function load(page = 1) {
     loading.value = true;
@@ -35,10 +41,26 @@ async function load(page = 1) {
     }
 }
 
-async function toggleBlock(user) {
-    user.is_blocked ? await unblockAdminUser(user.id) : await blockAdminUser(user.id);
-    toast.success(user.is_blocked ? 'User unblocked' : 'User blocked');
-    await load(meta.value.current_page || 1);
+useDebouncedWatch(
+    () => role.value,
+    () => load(),
+);
+
+async function confirmBlockToggle() {
+    if (!blocking.value) {
+        return;
+    }
+
+    const user = blocking.value;
+
+    try {
+        user.is_blocked ? await unblockAdminUser(user.id) : await blockAdminUser(user.id);
+        toast.success(user.is_blocked ? 'User unblocked' : 'User blocked');
+        blocking.value = null;
+        await load(meta.value.current_page || 1);
+    } catch (error) {
+        toast.error(error.response?.data?.message || 'Unable to update user status');
+    }
 }
 
 async function toggleVerify(user) {
@@ -70,7 +92,7 @@ onMounted(load);
         <div class="space-y-4">
             <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
-                <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" @update:model-value="load()" />
+                <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" />
             </div>
             <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email', label: 'Email' }, { key: 'status', label: 'Status' }, { key: 'verified', label: 'Verified' }]" :loading="loading" :has-records="users.length > 0">
                 <tr v-for="user in users" :key="user.id">
@@ -87,19 +109,31 @@ onMounted(load);
                         <StatusBadge :value="user.is_admin_verified ? 'verified' : 'pending'" />
                     </td>
                     <td class="px-4 py-3 text-right">
+                        <div class="flex flex-wrap justify-end gap-2">
                         <button
-                            class="text-sm font-medium text-gray-900 dark:text-white"
+                            :class="neutralChip"
                             @click="toggleVerify(user)"
                         >
                             {{ user.is_admin_verified ? 'Unverify' : 'Verify' }}
                         </button>
-                        <button class="ml-3 text-sm font-medium text-gray-900 dark:text-white" @click="toggleBlock(user)">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
-                        <button class="ml-3 text-sm font-medium text-red-600" @click="deleting = user">Delete</button>
+                        <button :class="neutralChip" @click="blocking = user">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
+                        <RouterLink :class="neutralChip" :to="`/admin/audit-logs?user=${user.id}`">Timeline</RouterLink>
+                        <button :class="dangerChip" @click="deleting = user">Delete</button>
+                        </div>
                     </td>
                 </tr>
             </AdminTable>
             <PaginationControls :meta="meta" @change="load" />
         </div>
+        <ConfirmDialog
+            :open="Boolean(blocking)"
+            :title="blocking?.is_blocked ? 'Unblock user' : 'Block user'"
+            :message="blocking?.is_blocked
+                ? `Allow ${blocking?.name || 'this user'} to access platform features again?`
+                : `Block ${blocking?.name || 'this user'} from protected platform features? They can still login and request unblock.`"
+            @cancel="blocking = null"
+            @confirm="confirmBlockToggle"
+        />
         <ConfirmDialog :open="Boolean(deleting)" title="Delete user" message="This user account will be deleted." @cancel="deleting = null" @confirm="confirmDelete" />
     </AdminLayout>
 </template>

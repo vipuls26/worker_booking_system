@@ -4,6 +4,22 @@ export function adminDashboard() {
     return http.get('/admin/dashboard');
 }
 
+export function adminRevenue() {
+    return http.get('/admin/revenue');
+}
+
+export function adminAuditLogs(params = {}) {
+    return http.get('/admin/audit-logs', { params });
+}
+
+export function adminUserAuditLogs(userId, params = {}) {
+    return http.get(`/admin/audit-logs/users/${userId}`, { params });
+}
+
+export function adminBookingAuditLogs(bookingId, params = {}) {
+    return http.get(`/admin/audit-logs/bookings/${bookingId}`, { params });
+}
+
 export function adminServices(params = {}) {
     return http.get('/admin/services', { params });
 }

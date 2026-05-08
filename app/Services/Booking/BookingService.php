@@ -9,7 +9,6 @@ use App\Models\ServiceRequest;
 use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerService;
-use App\Notifications\BookingWorkflowNotification;
 use App\Services\Audit\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -31,6 +30,14 @@ class BookingService
     public function create(User $customer, array $data): ServiceRequest
     {
         return DB::transaction(function () use ($customer, $data): ServiceRequest {
+            $address = $data['address'] ?? $customer->customerProfile?->address;
+
+            if (! $address) {
+                throw ValidationException::withMessages([
+                    'address' => ['Add a service address or save a default address in your profile.'],
+                ]);
+            }
+
             $durationMinutes = $this->durationMinutes($data);
             $workerServices = $this->workerMatching->matchingWorkerServices([
                 ...$data,
@@ -53,18 +60,24 @@ class BookingService
                 'requested_date' => $data['booking_date'],
                 'start_time' => $data['start_time'],
                 'end_time' => $data['end_time'] ?? CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])->addMinutes($durationMinutes)->format('H:i'),
-                'address' => $data['address'],
+                'address' => $address,
                 'description' => $data['issue_description'],
                 'estimated_amount' => $pricing ? $this->totalAmount($pricing, $durationMinutes) : 0,
                 'status' => ServiceRequest::STATUS_OPEN,
             ]);
 
             $workerServices->each(function (WorkerService $workerService) use ($serviceRequest): void {
+                $durationMinutes = $this->durationMinutes([
+                    'booking_date' => $serviceRequest->requested_date->toDateString(),
+                    'start_time' => $serviceRequest->start_time,
+                    'end_time' => $serviceRequest->end_time,
+                ]);
+
                 $serviceRequest->workers()->create([
                     'worker_id' => $workerService->worker_id,
                     'worker_service_id' => $workerService->id,
                     'pricing_type' => $workerService->pricing_type,
-                    'quoted_price' => $workerService->price,
+                    'quoted_price' => $this->totalAmount($workerService, $durationMinutes),
                     'minimum_hours' => $workerService->minimum_hours,
                     'status' => ServiceRequestWorker::STATUS_PENDING,
                     'responded_at' => null,
@@ -203,10 +216,10 @@ class BookingService
                 'address' => $serviceRequest->address,
                 'notes' => $serviceRequest->description,
                 'issue_description' => $serviceRequest->description,
-                'total_amount' => $totalAmount,
-                'commission_rate' => $commission['rate'],
-                'platform_commission' => $commission['platform_commission'],
-                'worker_earning' => $commission['worker_earning'],
+                'quoted_amount' => $totalAmount,
+                'quoted_commission_rate' => $commission['rate'],
+                'quoted_platform_commission' => $commission['platform_commission'],
+                'quoted_worker_earning' => $commission['worker_earning'],
                 'status' => Booking::STATUS_CONFIRMED,
             ]);
 
@@ -236,10 +249,10 @@ class BookingService
             $this->audit->record('service_request.worker_selected', $customer, $serviceRequest, [
                 'booking_id' => $booking->id,
                 'selected_worker_id' => $serviceRequestWorker->worker_id,
-                'total_amount' => $booking->total_amount,
-                'commission_rate' => $booking->commission_rate,
-                'platform_commission' => $booking->platform_commission,
-                'worker_earning' => $booking->worker_earning,
+                'quoted_amount' => $booking->quoted_amount,
+                'quoted_commission_rate' => $booking->quoted_commission_rate,
+                'quoted_platform_commission' => $booking->quoted_platform_commission,
+                'quoted_worker_earning' => $booking->quoted_worker_earning,
             ]);
 
             $this->audit->record('booking.created', $customer, $booking, [
@@ -247,33 +260,6 @@ class BookingService
                 'worker_id' => $booking->worker_id,
                 'status' => $booking->status,
             ]);
-
-            $booking->worker?->notify(new BookingWorkflowNotification(
-                booking: $booking,
-                event: 'booking_confirmed',
-                title: 'Booking confirmed',
-                message: sprintf('%s selected you for %s.', $booking->customer?->name ?? 'A customer', $booking->service?->name ?? 'a booking'),
-            ));
-
-            $booking->customer?->notify(new BookingWorkflowNotification(
-                booking: $booking,
-                event: 'booking_confirmed',
-                title: 'Booking confirmed',
-                message: sprintf('Your %s booking is confirmed with %s.', $booking->service?->name ?? 'service', $booking->worker?->name ?? 'the selected worker'),
-            ));
-
-            $serviceRequest->workers()
-                ->where('status', ServiceRequestWorker::STATUS_NOT_SELECTED)
-                ->with('worker')
-                ->get()
-                ->each(function (ServiceRequestWorker $notSelectedWorker) use ($booking): void {
-                    $notSelectedWorker->worker?->notify(new BookingWorkflowNotification(
-                        booking: $booking,
-                        event: 'booking_request_closed',
-                        title: 'Booking request closed',
-                        message: sprintf('The customer selected another worker for %s.', $booking->service?->name ?? 'this booking'),
-                    ));
-                });
 
             return $serviceRequest->refresh()->load($this->serviceRequestRelations());
         });
@@ -287,15 +273,7 @@ class BookingService
             ->transition($booking, $status, $actor, $reason)
             ->load(['customer.role', 'worker.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
 
-        $this->notifyBookingStatusChanged($booking, $status, $actor);
-
-        event(new BookingStatusChanged($booking, $oldStatus, $status));
-
-        $this->audit->record('booking.status_changed', $actor, $booking, [
-            'from_status' => $oldStatus,
-            'to_status' => $status,
-            'reason' => $reason,
-        ]);
+        event(new BookingStatusChanged($booking, $oldStatus, $status, $actor, $reason));
 
         return $booking;
     }
@@ -337,6 +315,10 @@ class BookingService
 
     private function durationMinutes(array $data): int
     {
+        if (! empty($data['duration_minutes'])) {
+            return (int) $data['duration_minutes'];
+        }
+
         if (! empty($data['end_time'])) {
             return CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])
                 ->diffInMinutes(CarbonImmutable::parse($data['booking_date'].' '.$data['end_time']));
@@ -371,41 +353,6 @@ class BookingService
         ];
     }
 
-    private function notifyBookingStatusChanged(Booking $booking, string $status, ?User $actor): void
-    {
-        if ($status === Booking::STATUS_CANCELLED && $actor?->id === $booking->customer_id) {
-            $booking->worker?->notify(new BookingWorkflowNotification(
-                booking: $booking,
-                event: 'booking_cancelled',
-                title: 'Booking cancelled',
-                message: sprintf('%s cancelled a booking.', $booking->customer?->name ?? 'Customer'),
-            ));
-
-            return;
-        }
-
-        $messages = [
-            Booking::STATUS_ACCEPTED => ['booking_accepted', 'Booking accepted', 'Your booking has been accepted.'],
-            Booking::STATUS_REJECTED => ['booking_rejected', 'Booking rejected', 'Your booking has been rejected.'],
-            Booking::STATUS_IN_PROGRESS => ['work_started', 'Work started', 'Your worker has started the job.'],
-            Booking::STATUS_COMPLETED => ['work_completed', 'Work completed', 'Your booking has been completed.'],
-            Booking::STATUS_CANCELLED => ['booking_cancelled', 'Booking cancelled', 'Your booking has been cancelled.'],
-        ];
-
-        if (! isset($messages[$status])) {
-            return;
-        }
-
-        [$event, $title, $message] = $messages[$status];
-
-        $booking->customer?->notify(new BookingWorkflowNotification(
-            booking: $booking,
-            event: $event,
-            title: $title,
-            message: $message,
-        ));
-    }
-
     /**
      * @return array<int|string, mixed>
      */
@@ -416,6 +363,7 @@ class BookingService
             'worker.role',
             'selectedWorker.role',
             'service',
+            'latestPayment',
             'bookingRequests.worker' => fn ($query) => $query
                 ->with([
                     'role',
@@ -448,6 +396,7 @@ class BookingService
             'booking.worker.role',
             'booking.selectedWorker.role',
             'booking.service',
+            'booking.latestPayment',
             'booking.activities.actor.role',
             'booking.review.customer.role',
             'booking.workerReview.worker.role',

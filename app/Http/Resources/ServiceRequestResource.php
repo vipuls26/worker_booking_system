@@ -37,7 +37,7 @@ class ServiceRequestResource extends JsonResource
             'address' => $this->address,
             'notes' => $this->description,
             'issue_description' => $this->description,
-            'total_amount' => $booking?->total_amount ?? $this->estimated_amount,
+            'total_amount' => $booking?->quoted_amount ?? $this->estimated_amount,
             'estimated_amount' => $this->estimated_amount,
             'status' => $this->status,
             'requests' => ServiceRequestWorkerResource::collection($this->whenLoaded('workers')),

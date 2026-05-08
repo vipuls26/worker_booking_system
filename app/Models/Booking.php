@@ -4,13 +4,14 @@ namespace App\Models;
 
 use Database\Factories\BookingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['service_request_id', 'customer_id', 'worker_id', 'selected_worker_id', 'service_id', 'booking_date', 'booking_time', 'start_time', 'end_time', 'address', 'notes', 'issue_description', 'total_amount', 'commission_rate', 'platform_commission', 'worker_earning', 'status', 'cancelled_by', 'cancelled_reason', 'rejection_reason'])]
+#[Fillable(['service_request_id', 'customer_id', 'worker_id', 'selected_worker_id', 'service_id', 'booking_date', 'booking_time', 'start_time', 'end_time', 'address', 'notes', 'issue_description', 'quoted_amount', 'quoted_commission_rate', 'quoted_platform_commission', 'quoted_worker_earning', 'status', 'payment_status', 'paid_at', 'cancelled_by', 'cancelled_reason', 'rejection_reason'])]
 class Booking extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -28,6 +29,12 @@ class Booking extends Model
     public const STATUS_COMPLETED = 'completed';
 
     public const STATUS_CANCELLED = 'cancelled';
+
+    public const PAYMENT_UNPAID = 'unpaid';
+
+    public const PAYMENT_PAID = 'paid';
+
+    public const PAYMENT_REFUNDED = 'refunded';
 
     public const DefaultCommissionRate = 10.00;
 
@@ -123,16 +130,73 @@ class Booking extends Model
     }
 
     /**
+     * @return HasMany<Payment, $this>
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * @return HasOne<Payment, $this>
+     */
+    public function latestPayment(): HasOne
+    {
+        return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    /**
+     * @return HasMany<Dispute, $this>
+     */
+    public function disputes(): HasMany
+    {
+        return $this->hasMany(Dispute::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
             'booking_date' => 'date',
-            'total_amount' => 'decimal:2',
-            'commission_rate' => 'decimal:2',
-            'platform_commission' => 'decimal:2',
-            'worker_earning' => 'decimal:2',
+            'quoted_amount' => 'decimal:2',
+            'quoted_commission_rate' => 'decimal:2',
+            'quoted_platform_commission' => 'decimal:2',
+            'quoted_worker_earning' => 'decimal:2',
+            'paid_at' => 'datetime',
         ];
+    }
+
+    /**
+     * @return Attribute<string|null, never>
+     */
+    protected function totalAmount(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->quoted_amount);
+    }
+
+    /**
+     * @return Attribute<string|null, never>
+     */
+    protected function commissionRate(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->quoted_commission_rate);
+    }
+
+    /**
+     * @return Attribute<string|null, never>
+     */
+    protected function platformCommission(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->quoted_platform_commission);
+    }
+
+    /**
+     * @return Attribute<string|null, never>
+     */
+    protected function workerEarning(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->quoted_worker_earning);
     }
 }

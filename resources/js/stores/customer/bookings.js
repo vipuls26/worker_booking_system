@@ -68,6 +68,19 @@ export const useCustomerBookingsStore = defineStore('customerBookings', {
             return response.data;
         },
 
+        async pay(id, payload = {}) {
+            this.saving = true;
+
+            try {
+                const response = await bookingsApi.payBooking(id, payload);
+                this.booking = response.data.data.booking;
+
+                return response.data;
+            } finally {
+                this.saving = false;
+            }
+        },
+
         async submitReview(id, payload) {
             this.saving = true;
 

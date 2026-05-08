@@ -4,12 +4,17 @@ use App\Http\Middleware\EnsureEmailIsVerified;
 use App\Http\Middleware\EnsurePlatformUserIsVerified;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\EnsureUserIsNotBlocked;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -27,12 +32,48 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $exception): bool {
+            return $request->is('api/*') || $request->expectsJson();
+        });
+
         $exceptions->render(function (AuthenticationException $exception): JsonResponse {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthenticated',
                 'errors' => [],
             ], 401);
+        });
+
+        $exceptions->render(function (AuthorizationException $exception): JsonResponse {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage() ?: 'This action is unauthorized',
+                'errors' => [],
+            ], 403);
+        });
+
+        $exceptions->render(function (ValidationException $exception): JsonResponse {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $exception->errors(),
+            ], $exception->status);
+        });
+
+        $exceptions->render(function (NotFoundHttpException $exception): JsonResponse {
+            return response()->json([
+                'success' => false,
+                'message' => 'Resource not found',
+                'errors' => [],
+            ], 404);
+        });
+
+        $exceptions->render(function (TooManyRequestsHttpException $exception): JsonResponse {
+            return response()->json([
+                'success' => false,
+                'message' => 'Too many attempts. Please try again shortly.',
+                'errors' => [],
+            ], 429);
         });
 
         $exceptions->render(function (InvalidSignatureException $exception) {

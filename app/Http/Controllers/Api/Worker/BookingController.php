@@ -13,6 +13,7 @@ use App\Models\ServiceRequestWorker;
 use App\Services\Booking\BookingService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class BookingController extends Controller
 {
@@ -38,7 +39,7 @@ class BookingController extends Controller
 
     public function show(Booking $booking): JsonResponse
     {
-        $this->ensureOwnedByWorker($booking);
+        Gate::authorize('view', $booking);
 
         return response()->json([
             'success' => true,
@@ -97,7 +98,7 @@ class BookingController extends Controller
 
     public function updateStatus(UpdateBookingStatusRequest $request, Booking $booking): JsonResponse
     {
-        $this->ensureOwnedByWorker($booking);
+        Gate::authorize('updateStatus', $booking);
 
         $reason = $request->string('rejection_reason')->toString() ?: null;
 
@@ -108,11 +109,6 @@ class BookingController extends Controller
                 'booking' => new BookingResource($this->bookings->updateStatus($booking, $request->string('status')->toString(), $reason, $request->user())),
             ],
         ]);
-    }
-
-    private function ensureOwnedByWorker(Booking $booking): void
-    {
-        abort_if($booking->worker_id !== request()->user()?->id, 404);
     }
 
     private function ensureRequestOwnedByWorker(ServiceRequestWorker $bookingRequest): void

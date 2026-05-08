@@ -62,7 +62,7 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
                 :max="max"
                 :step="step"
                 :class="[
-                    'block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-white dark:focus:ring-white',
+                    'block w-full rounded-md border-blue-100 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-blue-400 dark:focus:ring-blue-400',
                     isPassword ? 'pr-10' : '',
                 ]"
                 @input="$emit('update:modelValue', $event.target.value)"

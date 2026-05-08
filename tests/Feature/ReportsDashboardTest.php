@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Review;
 use App\Models\Role;
 use App\Models\Service;
@@ -25,7 +26,20 @@ class ReportsDashboardTest extends TestCase
             'worker_id' => $worker->id,
             'service_id' => $service->id,
             'status' => Booking::STATUS_COMPLETED,
-            'total_amount' => 1200,
+            'quoted_amount' => 1200,
+            'quoted_platform_commission' => 120,
+            'quoted_worker_earning' => 1080,
+        ])->payments()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'amount' => 1200,
+            'commission_rate' => 10,
+            'platform_commission' => 120,
+            'worker_earning' => 1080,
+            'provider' => 'manual',
+            'transaction_reference' => 'REPORT-001',
+            'status' => Payment::STATUS_PAID,
+            'paid_at' => now(),
         ]);
 
         Sanctum::actingAs($admin);
@@ -41,7 +55,7 @@ class ReportsDashboardTest extends TestCase
                     'popular_services',
                 ],
             ])
-            ->assertJsonPath('data.total_revenue', 1200);
+            ->assertJsonPath('data.total_revenue', 120);
     }
 
     public function test_worker_dashboard_returns_earnings_ratings_and_top_services(): void
@@ -53,7 +67,19 @@ class ReportsDashboardTest extends TestCase
             'worker_id' => $worker->id,
             'service_id' => $service->id,
             'status' => Booking::STATUS_COMPLETED,
-            'total_amount' => 900,
+            'quoted_amount' => 900,
+            'quoted_platform_commission' => 90,
+            'quoted_worker_earning' => 810,
+        ]);
+        Payment::factory()->create([
+            'booking_id' => $booking->id,
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'amount' => 900,
+            'commission_rate' => 10,
+            'platform_commission' => 90,
+            'worker_earning' => 810,
+            'status' => Payment::STATUS_PAID,
         ]);
 
         Review::factory()->create([
@@ -67,7 +93,7 @@ class ReportsDashboardTest extends TestCase
 
         $this->getJson('/api/worker/dashboard')
             ->assertOk()
-            ->assertJsonPath('data.analytics.earnings', 900)
+            ->assertJsonPath('data.analytics.earnings', 810)
             ->assertJsonPath('data.analytics.completed_bookings', 1)
             ->assertJsonPath('data.analytics.average_rating', 5.0)
             ->assertJsonStructure([

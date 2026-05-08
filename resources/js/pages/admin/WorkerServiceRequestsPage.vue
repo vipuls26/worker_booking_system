@@ -9,6 +9,7 @@ import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
@@ -45,6 +46,11 @@ async function load(page = 1) {
         loading.value = false;
     }
 }
+
+useDebouncedWatch(
+    () => status.value,
+    () => load(),
+);
 
 async function approve(workerService) {
     processingId.value = workerService.id;
@@ -96,7 +102,7 @@ onMounted(load);
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                     <SearchFilter v-model="search" placeholder="Search worker, service, or description" @search="load()" />
-                    <FormSelect id="worker_service_request_status" v-model="status" label="Approval status" :options="statusOptions" @update:model-value="load()" />
+                    <FormSelect id="worker_service_request_status" v-model="status" label="Approval status" :options="statusOptions" />
                 </div>
             </section>
 

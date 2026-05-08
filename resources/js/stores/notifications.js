@@ -52,5 +52,22 @@ export const useNotificationsStore = defineStore('notifications', {
 
             return response.data;
         },
+
+        async remove(id) {
+            const response = await notificationsApi.deleteNotification(id);
+            this.unreadCount = response.data.data.unread_count;
+            this.notifications = this.notifications.filter((item) => item.id !== id);
+
+            return response.data;
+        },
+
+        async clearAll() {
+            const response = await notificationsApi.clearAllNotifications();
+            this.unreadCount = response.data.data.unread_count;
+            this.notifications = [];
+            this.meta = {};
+
+            return response.data;
+        },
     },
 });

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { workerDashboard } from '../api/worker/dashboard';
@@ -28,6 +28,12 @@ const analytics = ref({
         next_off_day: null,
     },
 });
+
+const earningsSummary = computed(() => [
+    { label: 'Paid by customers', value: analytics.value.earnings || 0, icon: 'pi-indian-rupee' },
+    { label: 'Available for payout', value: analytics.value.pending_payout || 0, icon: 'pi-wallet' },
+    { label: 'Completed jobs', value: analytics.value.completed_bookings || 0, icon: 'pi-check-circle' },
+]);
 
 const serviceColumns = [
     { key: 'name', label: 'Service' },
@@ -109,14 +115,48 @@ onMounted(async () => {
                 v-for="card in analytics.cards"
                 :key="card.label"
                 :eyebrow="card.label"
-                :title="card.label === 'Earnings' ? `₹${card.value}` : String(card.value)"
+                :title="['Paid by customers', 'Available for payout'].includes(card.label) ? `₹${card.value}` : String(card.value)"
                 description="Worker analytics"
             />
         </div>
 
         <SkeletonCard v-if="loading" class="mt-6" :lines="4" :avatar="false" />
 
-        <AppPanel v-else class="mt-6">
+        <section v-else class="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Earnings</p>
+                    <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Paid earning graph</h2>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Track monthly worker earnings after customer payment.</p>
+                </div>
+                <RouterLink
+                    to="/worker/bookings"
+                    class="inline-flex w-fit items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                >
+                    <i class="pi pi-calendar" aria-hidden="true"></i>
+                    View bookings
+                </RouterLink>
+            </div>
+
+            <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_340px]">
+                <AnalyticsBarChart title="Monthly paid earnings" subtitle="Only paid bookings are counted here." :items="analytics.earnings_chart" value-prefix="₹" variant="line" />
+                <div class="grid gap-3">
+                    <div v-for="item in earningsSummary" :key="item.label" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-gray-950">
+                        <div class="flex items-center justify-between gap-3">
+                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ item.label }}</p>
+                            <span class="inline-flex size-9 items-center justify-center rounded-md bg-white text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:ring-white/10">
+                                <i :class="['pi', item.icon]" aria-hidden="true"></i>
+                            </span>
+                        </div>
+                        <p class="mt-3 text-2xl font-semibold text-gray-900 dark:text-white">
+                            {{ item.label === 'Completed jobs' ? item.value : `₹${item.value}` }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <AppPanel v-if="!loading" class="mt-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Availability</p>
@@ -163,8 +203,7 @@ onMounted(async () => {
         </div>
 
         <div v-else class="mt-6 grid gap-5 lg:grid-cols-2">
-            <AnalyticsBarChart title="Monthly earnings" :items="analytics.earnings_chart" value-prefix="₹" />
-            <AnalyticsBarChart title="Booking statuses" :items="analytics.booking_statuses" />
+            <AnalyticsBarChart title="Booking statuses" subtitle="Your active and completed booking split." :items="analytics.booking_statuses" />
             <AnalyticsTable title="Top services" :rows="analytics.top_services" :columns="serviceColumns" />
             <AnalyticsTable title="Recent reviews" :rows="analytics.recent_reviews" :columns="reviewColumns" />
         </div>

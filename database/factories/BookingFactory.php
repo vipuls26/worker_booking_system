@@ -38,11 +38,13 @@ class BookingFactory extends Factory
             'address' => fake()->address(),
             'notes' => fake()->sentence(),
             'issue_description' => fake()->sentence(),
-            'total_amount' => $totalAmount,
-            'commission_rate' => Booking::DefaultCommissionRate,
-            'platform_commission' => $platformCommission,
-            'worker_earning' => round($totalAmount - $platformCommission, 2),
+            'quoted_amount' => $totalAmount,
+            'quoted_commission_rate' => Booking::DefaultCommissionRate,
+            'quoted_platform_commission' => $platformCommission,
+            'quoted_worker_earning' => round($totalAmount - $platformCommission, 2),
             'status' => Booking::STATUS_PENDING,
+            'payment_status' => Booking::PAYMENT_UNPAID,
+            'paid_at' => null,
         ];
     }
 }

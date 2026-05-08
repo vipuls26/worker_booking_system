@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminBookings, cancelAdminBooking } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -9,6 +10,7 @@ import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
@@ -29,6 +31,8 @@ const statusOptions = [
     { id: 'completed', name: 'Completed' },
     { id: 'cancelled', name: 'Cancelled' },
 ];
+const dangerChip = 'inline-flex items-center justify-center rounded-md bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 shadow-[0_2px_0_#fecaca,0_6px_12px_rgba(220,38,38,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-100 active:translate-y-0.5 active:shadow-[0_1px_0_#fecaca,0_4px_8px_rgba(220,38,38,0.12)] dark:bg-red-500/10 dark:text-red-300 dark:shadow-[0_2px_0_rgba(248,113,113,0.18)]';
+const neutralChip = 'inline-flex items-center justify-center rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 shadow-[0_2px_0_#bfdbfe,0_6px_12px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 dark:bg-blue-500/10 dark:text-blue-300';
 
 async function load(page = 1) {
     loading.value = true;
@@ -42,6 +46,11 @@ async function load(page = 1) {
         loading.value = false;
     }
 }
+
+useDebouncedWatch(
+    () => status.value,
+    () => load(),
+);
 
 async function cancel() {
     await cancelAdminBooking(cancelling.value.id, cancelReason.value);
@@ -59,7 +68,7 @@ onMounted(load);
         <div class="space-y-4">
             <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                 <SearchFilter v-model="search" placeholder="Search bookings" @search="load()" />
-                <FormSelect id="booking_status" v-model="status" label="Status" :options="statusOptions" @update:model-value="load()" />
+                <FormSelect id="booking_status" v-model="status" label="Status" :options="statusOptions" />
             </div>
             <AdminTable :columns="[{ key: 'booking', label: 'Booking' }, { key: 'amount', label: 'Amount' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="bookings.length > 0">
                 <tr v-for="booking in bookings" :key="booking.id">
@@ -71,7 +80,10 @@ onMounted(load);
                     <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">₹{{ booking.total_amount }}</td>
                     <td class="px-4 py-3"><StatusBadge :value="booking.status" /></td>
                     <td class="px-4 py-3 text-right">
-                        <button v-if="booking.status !== 'cancelled'" class="text-sm font-medium text-red-600" @click="cancelling = booking">Cancel</button>
+                        <div class="flex flex-wrap justify-end gap-2">
+                            <RouterLink :class="neutralChip" :to="`/admin/audit-logs?booking=${booking.id}`">Timeline</RouterLink>
+                            <button v-if="booking.status !== 'cancelled'" :class="dangerChip" @click="cancelling = booking">Cancel</button>
+                        </div>
                     </td>
                 </tr>
             </AdminTable>

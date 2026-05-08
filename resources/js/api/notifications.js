@@ -15,3 +15,11 @@ export function markNotificationAsRead(id) {
 export function markAllNotificationsAsRead() {
     return http.patch('/notifications/read-all');
 }
+
+export function deleteNotification(id) {
+    return http.delete(`/notifications/${id}`);
+}
+
+export function clearAllNotifications() {
+    return http.delete('/notifications/clear-all');
+}

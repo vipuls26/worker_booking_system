@@ -18,7 +18,7 @@ defineProps({
 </script>
 
 <template>
-    <article class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+    <article class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-blue-100 dark:bg-gray-900 dark:ring-white/10">
         <div class="flex gap-3">
             <SkeletonBlock v-if="avatar" rounded="rounded-md" class="size-10 shrink-0" />
 

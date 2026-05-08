@@ -17,6 +17,7 @@ class ReviewReceivedNotification extends Notification implements ShouldQueue
      */
     public function __construct(private readonly Review $review)
     {
+        $this->review->loadMissing(['booking', 'customer', 'worker']);
         $this->afterCommit();
     }
 
@@ -47,9 +48,10 @@ class ReviewReceivedNotification extends Notification implements ShouldQueue
             'title' => $isWorkerFeedback ? 'New worker feedback received' : 'New review received',
             'message' => sprintf('%s rated you %d stars.', $reviewerName, $this->review->rating),
             'booking_id' => $this->review->booking_id,
+            'service_request_id' => $this->review->booking?->service_request_id,
             'review_id' => $this->review->id,
             'rating' => $this->review->rating,
-            'url' => $isWorkerFeedback ? "/customer/bookings/{$this->review->booking_id}" : '/worker/reviews',
+            'url' => $isWorkerFeedback ? '/customer/bookings/'.($this->review->booking?->service_request_id ?: $this->review->booking_id) : '/worker/reviews',
             'broadcast_ready' => true,
         ];
     }

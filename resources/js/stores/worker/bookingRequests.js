@@ -42,11 +42,11 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
             }
         },
 
-        async respond(id, status) {
+        async respond(id, payload) {
             this.saving = true;
 
             try {
-                const response = await bookingRequestsApi.respondToBookingRequest(id, { status });
+                const response = await bookingRequestsApi.respondToBookingRequest(id, payload);
                 const updatedRequest = response.data.data.booking_request;
                 this.bookingRequest = updatedRequest;
                 this.bookingRequests = this.bookingRequests.map((bookingRequest) => (

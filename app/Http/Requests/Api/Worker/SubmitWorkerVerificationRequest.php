@@ -14,8 +14,13 @@ class SubmitWorkerVerificationRequest extends ApiFormRequest
      */
     public function rules(): array
     {
+        $hasExistingIdProof = $this->user()
+            ?->workerVerification()
+            ->whereNotNull('id_proof')
+            ->exists() ?? false;
+
         return [
-            'id_proof' => ['required', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max('5mb')],
+            'id_proof' => [$hasExistingIdProof ? 'sometimes' : 'required', File::types(['jpg', 'jpeg', 'png', 'pdf'])->max('5mb')],
             'certificates' => ['sometimes', 'array', 'max:5'],
             'certificates.*' => [File::types(['jpg', 'jpeg', 'png', 'pdf'])->max('5mb')],
             'experience_years' => ['required', 'integer', 'min:0', 'max:60'],

@@ -90,7 +90,12 @@ class BookingController extends Controller
             'message' => 'Booking request updated',
             'data' => [
                 'booking_request' => new ServiceRequestWorkerResource(
-                    $this->bookings->respondToRequest($bookingRequest, $request->user(), $request->string('status')->toString()),
+                    $this->bookings->respondToRequest(
+                        serviceRequestWorker: $bookingRequest,
+                        worker: $request->user(),
+                        status: $request->string('status')->toString(),
+                        reason: $request->string('response_reason')->toString() ?: null,
+                    ),
                 ),
             ],
         ]);
@@ -100,13 +105,15 @@ class BookingController extends Controller
     {
         Gate::authorize('updateStatus', $booking);
 
-        $reason = $request->string('rejection_reason')->toString() ?: null;
+        $status = $request->string('status')->toString();
+        $reasonField = $status === Booking::STATUS_CANCELLED ? 'cancelled_reason' : 'rejection_reason';
+        $reason = $request->string($reasonField)->toString() ?: null;
 
         return response()->json([
             'success' => true,
             'message' => 'Booking status updated',
             'data' => [
-                'booking' => new BookingResource($this->bookings->updateStatus($booking, $request->string('status')->toString(), $reason, $request->user())),
+                'booking' => new BookingResource($this->bookings->updateStatus($booking, $status, $reason, $request->user())),
             ],
         ]);
     }

@@ -128,7 +128,7 @@ class BookingService
             ->paginate($perPage);
     }
 
-    public function respondToRequest(ServiceRequestWorker $serviceRequestWorker, User $worker, string $status): ServiceRequestWorker
+    public function respondToRequest(ServiceRequestWorker $serviceRequestWorker, User $worker, string $status, ?string $reason = null): ServiceRequestWorker
     {
         abort_if($serviceRequestWorker->worker_id !== $worker->id, 404);
 
@@ -155,6 +155,7 @@ class BookingService
 
         $serviceRequestWorker->update([
             'status' => $status,
+            'response_reason' => $reason,
             'responded_at' => now(),
         ]);
 
@@ -163,6 +164,7 @@ class BookingService
         $this->audit->record('service_request_worker.responded', $worker, $serviceRequestWorker, [
             'service_request_id' => $serviceRequestWorker->service_request_id,
             'status' => $serviceRequestWorker->status,
+            'response_reason' => $serviceRequestWorker->response_reason,
             'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
         ]);
 

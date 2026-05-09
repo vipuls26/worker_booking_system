@@ -42,6 +42,14 @@ const verificationStatusClasses = computed(() => {
 
     return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
 });
+const hasSubmittedProof = computed(() => Boolean(verification.value?.id_proof_url || verificationIdProof.value));
+const verificationButtonText = computed(() => {
+    if (verificationSubmitting.value) {
+        return 'Submitting...';
+    }
+
+    return verification.value ? 'Submit updates' : 'Submit verification';
+});
 
 function fillForm(profile) {
     form.profile_photo = null;
@@ -97,16 +105,20 @@ async function loadVerification() {
 }
 
 async function submitVerification() {
-    if (! verificationIdProof.value) {
+    if (! hasSubmittedProof.value) {
         toast.error('Please upload ID proof first');
         return;
     }
 
+    clearApiErrors();
     verificationSubmitting.value = true;
 
     try {
         const payload = new FormData();
-        payload.append('id_proof', verificationIdProof.value);
+        if (verificationIdProof.value) {
+            payload.append('id_proof', verificationIdProof.value);
+        }
+
         payload.append('experience_years', form.experience_years || 0);
         payload.append('mobile_verified', '1');
         verificationCertificates.value.forEach((certificate) => {
@@ -117,8 +129,10 @@ async function submitVerification() {
         verification.value = response.data.data.verification;
         verificationIdProof.value = null;
         verificationCertificates.value = [];
+        await profileStore.fetch();
         toast.success(response.data.message || 'Verification submitted');
     } catch (error) {
+        setApiError(error);
         toast.error(error.response?.data?.message || 'Unable to submit verification');
     } finally {
         verificationSubmitting.value = false;
@@ -214,19 +228,21 @@ onBeforeUnmount(() => {
                         </a>
                     </div>
 
-                    <div v-if="verification?.status !== 'approved'" class="mt-4 space-y-3">
+                    <div class="mt-4 space-y-3">
                         <label class="block">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">ID proof</span>
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ verification?.id_proof_url ? 'Replace ID proof' : 'ID proof' }}</span>
                             <input
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationProofChange"
                             >
+                            <span v-if="verificationIdProof" class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ verificationIdProof.name }}</span>
                         </label>
+                        <p v-if="errors.id_proof?.length" class="text-sm text-red-600 dark:text-red-400">{{ errors.id_proof[0] }}</p>
 
                         <label class="block">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Certificates optional</span>
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ verification?.certificates?.length ? 'Replace certificates' : 'Certificates optional' }}</span>
                             <input
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
@@ -234,10 +250,14 @@ onBeforeUnmount(() => {
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationCertificateChange"
                             >
+                            <span v-if="verificationCertificates.length" class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                                {{ verificationCertificates.map((certificate) => certificate.name).join(', ') }}
+                            </span>
                         </label>
+                        <p v-if="errors.certificates?.length" class="text-sm text-red-600 dark:text-red-400">{{ errors.certificates[0] }}</p>
 
                         <AppButton type="button" icon="pi-send" :loading="verificationSubmitting" @click="submitVerification">
-                            {{ verificationSubmitting ? 'Submitting...' : 'Submit verification' }}
+                            {{ verificationButtonText }}
                         </AppButton>
                     </div>
                 </div>

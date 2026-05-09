@@ -6,10 +6,14 @@ use App\Models\Booking;
 use App\Models\BookingRequest;
 use App\Models\Role;
 use App\Models\Service;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerProfile;
 use App\Models\WorkerSchedule;
 use App\Models\WorkerService;
+use App\Notifications\BookingWorkflowNotification;
+use App\Notifications\ServiceRequestWorkflowNotification;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -138,6 +142,78 @@ class BookingAutoMatchingWorkflowTest extends TestCase
             'booking_id' => $booking->id,
             'worker_id' => $secondWorker->id,
             'status' => BookingRequest::STATUS_AUTO_CANCELLED,
+        ]);
+    }
+
+    public function test_direct_worker_request_is_confirmed_when_worker_accepts(): void
+    {
+        Notification::fake();
+        $this->seed(RoleSeeder::class);
+
+        $customer = $this->customer();
+        $worker = $this->verifiedWorker();
+        $service = Service::factory()->create();
+        $bookingDate = now()->addDays(5)->toDateString();
+        $dayOfWeek = (int) now()->addDays(5)->dayOfWeek;
+
+        $this->attachServiceAndSchedule($worker, $service, $dayOfWeek);
+
+        Sanctum::actingAs($customer);
+
+        $serviceRequestId = $this->postJson('/api/customer/bookings', [
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => $bookingDate,
+            'start_time' => '12:00',
+            'end_time' => '13:00',
+            'address' => '456 Service Street',
+            'issue_description' => 'AC service needed',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_OPEN)
+            ->json('data.booking.id');
+
+        $serviceRequestWorker = ServiceRequestWorker::query()
+            ->where('service_request_id', $serviceRequestId)
+            ->where('worker_id', $worker->id)
+            ->firstOrFail();
+
+        Notification::assertSentTo(
+            $worker,
+            fn (ServiceRequestWorkflowNotification $notification): bool => $notification->toArray($worker)['event'] === 'service_request_received'
+                && $notification->toArray($worker)['title'] === 'New service request',
+        );
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$serviceRequestWorker->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.booking_request.status', ServiceRequestWorker::STATUS_SELECTED)
+            ->assertJsonPath('data.booking_request.service_request.status', ServiceRequest::STATUS_WORKER_SELECTED)
+            ->assertJsonPath('data.booking_request.service_request.selected_worker_id', $worker->id);
+
+        Notification::assertSentTo(
+            $customer,
+            fn (BookingWorkflowNotification $notification): bool => $notification->toArray($customer)['event'] === 'booking_accepted'
+                && $notification->toArray($customer)['title'] === 'Worker accepted your request',
+        );
+
+        $this->assertDatabaseHas('service_requests', [
+            'id' => $serviceRequestId,
+            'selected_worker_id' => $worker->id,
+            'status' => ServiceRequest::STATUS_WORKER_SELECTED,
+        ]);
+        $this->assertDatabaseHas('service_request_workers', [
+            'id' => $serviceRequestWorker->id,
+            'status' => ServiceRequestWorker::STATUS_SELECTED,
+        ]);
+        $this->assertDatabaseHas('bookings', [
+            'service_request_id' => $serviceRequestId,
+            'worker_id' => $worker->id,
+            'selected_worker_id' => $worker->id,
+            'status' => Booking::STATUS_CONFIRMED,
         ]);
     }
 

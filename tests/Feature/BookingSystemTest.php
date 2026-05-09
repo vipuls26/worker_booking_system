@@ -177,6 +177,50 @@ class BookingSystemTest extends TestCase
         ]);
     }
 
+    public function test_single_worker_request_is_confirmed_when_worker_accepts(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'description' => 'Need a technician.',
+        ]);
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+            'quoted_price' => 500,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.booking_request.status', ServiceRequestWorker::STATUS_SELECTED);
+
+        $this->assertDatabaseHas('service_requests', [
+            'id' => $serviceRequest->id,
+            'selected_worker_id' => $worker->id,
+            'status' => ServiceRequest::STATUS_WORKER_SELECTED,
+        ]);
+        $this->assertDatabaseHas('bookings', [
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+        $this->assertDatabaseHas('service_request_workers', [
+            'id' => $bookingRequest->id,
+            'status' => ServiceRequestWorker::STATUS_SELECTED,
+        ]);
+    }
+
     public function test_worker_must_provide_reason_when_cancelling_booking(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();

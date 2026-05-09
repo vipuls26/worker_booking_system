@@ -17,6 +17,18 @@ defineProps({
 });
 
 const emit = defineEmits(['toggle-select']);
+
+function formatRating(rating) {
+    const numericRating = Number(rating);
+
+    return Number.isFinite(numericRating) ? numericRating.toFixed(1) : '0.0';
+}
+
+function formatPrice(price) {
+    const numericPrice = Number(price);
+
+    return Number.isFinite(numericPrice) && numericPrice > 0 ? numericPrice : 'N/A';
+}
 </script>
 
 <template>
@@ -32,7 +44,7 @@ const emit = defineEmits(['toggle-select']);
                         <h2 class="font-semibold text-gray-900 dark:text-white">{{ worker.name }}</h2>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ worker.profile?.city || 'Location not set' }}</p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex shrink-0 items-center gap-2">
                         <button
                             v-if="selectable"
                             type="button"
@@ -43,8 +55,9 @@ const emit = defineEmits(['toggle-select']);
                         >
                             <i :class="['pi', selected ? 'pi-check' : 'pi-plus']" aria-hidden="true"></i>
                         </button>
-                        <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                            {{ worker.rating_average.toFixed(1) }} ★
+                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            <i class="pi pi-star-fill text-[10px]" aria-hidden="true"></i>
+                            {{ formatRating(worker.rating_average) }}
                         </span>
                     </div>
                 </div>
@@ -52,14 +65,14 @@ const emit = defineEmits(['toggle-select']);
                 <p class="mt-3 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{{ worker.profile?.bio || 'No bio added yet.' }}</p>
 
                 <div class="mt-3 flex flex-wrap gap-2">
-                    <span v-for="service in worker.services.slice(0, 3)" :key="service.id" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700 dark:bg-white/10 dark:text-gray-200">
+                    <span v-for="service in (worker.services || []).slice(0, 3)" :key="service.id" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700 dark:bg-white/10 dark:text-gray-200">
                         {{ service.service?.name }} · ₹{{ service.price }}
                     </span>
                 </div>
 
                 <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm font-medium text-gray-900 dark:text-white">
-                        From ₹{{ worker.min_service_price || 'N/A' }}
+                        From ₹{{ formatPrice(worker.min_service_price) }}
                     </p>
                     <RouterLink :to="`/customer/workers/${worker.id}`" class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
                         View

@@ -47,7 +47,7 @@ defineEmits(['update:modelValue']);
             <select
                 :id="id"
                 :value="modelValue"
-                class="block w-full appearance-none rounded-md border-blue-100 bg-white py-2 pl-3 pr-10 text-gray-900 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-blue-400 dark:focus:ring-blue-400"
+                class="block min-h-10 w-full min-w-0 appearance-none rounded-md border-blue-100 bg-white py-2 pl-3 pr-10 text-gray-900 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-blue-400 dark:focus:ring-blue-400"
                 @change="$emit('update:modelValue', Number($event.target.value) || $event.target.value)"
             >
                 <option value="" disabled class="bg-white text-gray-500 dark:bg-gray-950 dark:text-gray-400">

@@ -9,6 +9,7 @@ use App\Models\ServiceRequest;
 use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerService;
+use App\Notifications\ServiceRequestWorkflowNotification;
 use App\Services\Audit\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -95,6 +96,8 @@ class BookingService
                 'end_time' => $serviceRequest->end_time,
             ]);
 
+            $this->notifyWorkersAboutServiceRequest($serviceRequest);
+
             return $serviceRequest;
         });
     }
@@ -168,6 +171,10 @@ class BookingService
             'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
         ]);
 
+        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $serviceRequestWorker->serviceRequest->workers()->count() === 1) {
+            return $this->selectSingleAcceptedWorkerRequest($serviceRequestWorker, $worker);
+        }
+
         return $serviceRequestWorker;
     }
 
@@ -186,82 +193,7 @@ class BookingService
                 ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
                 ->firstOrFail();
 
-            $durationMinutes = $this->durationMinutes([
-                'booking_date' => $serviceRequest->requested_date->toDateString(),
-                'start_time' => $serviceRequest->start_time,
-                'end_time' => $serviceRequest->end_time,
-            ]);
-
-            if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
-                worker: $serviceRequestWorker->worker,
-                date: $serviceRequest->requested_date->toDateString(),
-                startTime: $serviceRequest->start_time,
-                durationMinutes: $durationMinutes,
-                ignoreServiceRequestId: $serviceRequest->id,
-            )) {
-                throw ValidationException::withMessages(['booking_request_id' => ['This worker is no longer available for the selected slot.']]);
-            }
-
-            $totalAmount = (float) ($serviceRequestWorker->quoted_price ?: $serviceRequest->estimated_amount);
-            $commission = $this->commissionBreakdown($totalAmount);
-
-            $booking = Booking::create([
-                'service_request_id' => $serviceRequest->id,
-                'customer_id' => $serviceRequest->customer_id,
-                'worker_id' => $serviceRequestWorker->worker_id,
-                'selected_worker_id' => $serviceRequestWorker->worker_id,
-                'service_id' => $serviceRequest->service_id,
-                'booking_date' => $serviceRequest->requested_date,
-                'booking_time' => $serviceRequest->start_time,
-                'start_time' => $serviceRequest->start_time,
-                'end_time' => $serviceRequest->end_time,
-                'address' => $serviceRequest->address,
-                'notes' => $serviceRequest->description,
-                'issue_description' => $serviceRequest->description,
-                'quoted_amount' => $totalAmount,
-                'quoted_commission_rate' => $commission['rate'],
-                'quoted_platform_commission' => $commission['platform_commission'],
-                'quoted_worker_earning' => $commission['worker_earning'],
-                'status' => Booking::STATUS_CONFIRMED,
-            ]);
-
-            $serviceRequest->update([
-                'selected_worker_id' => $serviceRequestWorker->worker_id,
-                'booking_id' => $booking->id,
-                'status' => ServiceRequest::STATUS_WORKER_SELECTED,
-            ]);
-
-            $serviceRequestWorker->update([
-                'status' => ServiceRequestWorker::STATUS_SELECTED,
-                'responded_at' => now(),
-            ]);
-
-            $serviceRequest->workers()
-                ->whereKeyNot($serviceRequestWorker->id)
-                ->whereIn('status', [ServiceRequestWorker::STATUS_PENDING, ServiceRequestWorker::STATUS_ACCEPTED])
-                ->update([
-                    'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
-                    'responded_at' => now(),
-                ]);
-
-            $booking = $booking->refresh()->load($this->bookingRelations());
-            $this->workflow->record($booking, null, $booking->status, 'worker_selected', $customer);
-            event(new BookingCreated($booking));
-
-            $this->audit->record('service_request.worker_selected', $customer, $serviceRequest, [
-                'booking_id' => $booking->id,
-                'selected_worker_id' => $serviceRequestWorker->worker_id,
-                'quoted_amount' => $booking->quoted_amount,
-                'quoted_commission_rate' => $booking->quoted_commission_rate,
-                'quoted_platform_commission' => $booking->quoted_platform_commission,
-                'quoted_worker_earning' => $booking->quoted_worker_earning,
-            ]);
-
-            $this->audit->record('booking.created', $customer, $booking, [
-                'service_request_id' => $serviceRequest->id,
-                'worker_id' => $booking->worker_id,
-                'status' => $booking->status,
-            ]);
+            $this->finalizeWorkerSelection($serviceRequest, $serviceRequestWorker, $customer);
 
             return $serviceRequest->refresh()->load($this->serviceRequestRelations());
         });
@@ -313,6 +245,130 @@ class BookingService
         ]);
 
         return $serviceRequest->refresh()->load($this->serviceRequestRelations());
+    }
+
+    private function selectSingleAcceptedWorkerRequest(ServiceRequestWorker $serviceRequestWorker, User $actor): ServiceRequestWorker
+    {
+        return DB::transaction(function () use ($serviceRequestWorker, $actor): ServiceRequestWorker {
+            $lockedRequestWorker = ServiceRequestWorker::query()
+                ->with(['worker', 'serviceRequest.customer'])
+                ->lockForUpdate()
+                ->findOrFail($serviceRequestWorker->id);
+
+            $serviceRequest = ServiceRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($lockedRequestWorker->service_request_id);
+
+            if (
+                $serviceRequest->status === ServiceRequest::STATUS_OPEN
+                && $lockedRequestWorker->status === ServiceRequestWorker::STATUS_ACCEPTED
+                && $serviceRequest->workers()->count() === 1
+            ) {
+                $this->finalizeWorkerSelection($serviceRequest, $lockedRequestWorker, $actor);
+            }
+
+            return $lockedRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']);
+        });
+    }
+
+    private function notifyWorkersAboutServiceRequest(ServiceRequest $serviceRequest): void
+    {
+        $serviceRequest->workers->each(function (ServiceRequestWorker $serviceRequestWorker) use ($serviceRequest): void {
+            $serviceRequestWorker->worker?->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequest,
+                event: 'service_request_received',
+                title: 'New service request',
+                message: sprintf(
+                    '%s requested %s for %s at %s.',
+                    $serviceRequest->customer?->name ?? 'A customer',
+                    $serviceRequest->service?->name ?? 'a service',
+                    $serviceRequest->requested_date?->format('M j, Y') ?? 'the selected date',
+                    $serviceRequest->start_time,
+                ),
+            ));
+        });
+    }
+
+    private function finalizeWorkerSelection(ServiceRequest $serviceRequest, ServiceRequestWorker $serviceRequestWorker, User $actor): Booking
+    {
+        $durationMinutes = $this->durationMinutes([
+            'booking_date' => $serviceRequest->requested_date->toDateString(),
+            'start_time' => $serviceRequest->start_time,
+            'end_time' => $serviceRequest->end_time,
+        ]);
+
+        if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
+            worker: $serviceRequestWorker->worker,
+            date: $serviceRequest->requested_date->toDateString(),
+            startTime: $serviceRequest->start_time,
+            durationMinutes: $durationMinutes,
+            ignoreServiceRequestId: $serviceRequest->id,
+        )) {
+            throw ValidationException::withMessages(['booking_request_id' => ['This worker is no longer available for the selected slot.']]);
+        }
+
+        $totalAmount = (float) ($serviceRequestWorker->quoted_price ?: $serviceRequest->estimated_amount);
+        $commission = $this->commissionBreakdown($totalAmount);
+
+        $booking = Booking::create([
+            'service_request_id' => $serviceRequest->id,
+            'customer_id' => $serviceRequest->customer_id,
+            'worker_id' => $serviceRequestWorker->worker_id,
+            'selected_worker_id' => $serviceRequestWorker->worker_id,
+            'service_id' => $serviceRequest->service_id,
+            'booking_date' => $serviceRequest->requested_date,
+            'booking_time' => $serviceRequest->start_time,
+            'start_time' => $serviceRequest->start_time,
+            'end_time' => $serviceRequest->end_time,
+            'address' => $serviceRequest->address,
+            'notes' => $serviceRequest->description,
+            'issue_description' => $serviceRequest->description,
+            'quoted_amount' => $totalAmount,
+            'quoted_commission_rate' => $commission['rate'],
+            'quoted_platform_commission' => $commission['platform_commission'],
+            'quoted_worker_earning' => $commission['worker_earning'],
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        $serviceRequest->update([
+            'selected_worker_id' => $serviceRequestWorker->worker_id,
+            'booking_id' => $booking->id,
+            'status' => ServiceRequest::STATUS_WORKER_SELECTED,
+        ]);
+
+        $serviceRequestWorker->update([
+            'status' => ServiceRequestWorker::STATUS_SELECTED,
+            'responded_at' => now(),
+        ]);
+
+        $serviceRequest->workers()
+            ->whereKeyNot($serviceRequestWorker->id)
+            ->whereIn('status', [ServiceRequestWorker::STATUS_PENDING, ServiceRequestWorker::STATUS_ACCEPTED])
+            ->update([
+                'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
+                'responded_at' => now(),
+            ]);
+
+        $booking = $booking->refresh()->load($this->bookingRelations());
+        $this->workflow->record($booking, null, $booking->status, 'worker_selected', $actor);
+        event(new BookingCreated($booking));
+
+        $this->audit->record('service_request.worker_selected', $actor, $serviceRequest, [
+            'booking_id' => $booking->id,
+            'selected_worker_id' => $serviceRequestWorker->worker_id,
+            'quoted_amount' => $booking->quoted_amount,
+            'quoted_commission_rate' => $booking->quoted_commission_rate,
+            'quoted_platform_commission' => $booking->quoted_platform_commission,
+            'quoted_worker_earning' => $booking->quoted_worker_earning,
+        ]);
+
+        $this->audit->record('booking.created', $actor, $booking, [
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $booking->worker_id,
+            'status' => $booking->status,
+        ]);
+
+        return $booking;
     }
 
     private function durationMinutes(array $data): int

@@ -8,6 +8,7 @@ import SkeletonList from '../../components/common/SkeletonList.vue';
 import WorkerCard from '../../components/customer/WorkerCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import FormTextarea from '../../components/forms/FormTextarea.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
@@ -494,19 +495,19 @@ onMounted(async () => {
                         <div class="mt-4">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Popular slots</p>
                             <div class="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                            <button
-                                v-for="slot in timeShortcuts"
-                                :key="slot.label"
-                                type="button"
-                                class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition"
-                                :class="requestForm.start_time === slot.start && requestForm.end_time === slot.end
-                                    ? 'border-emerald-600 bg-emerald-600 text-white shadow-emerald-600/20 dark:border-emerald-400 dark:bg-emerald-500'
-                                    : 'border-emerald-100 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-emerald-500/10'"
-                                @click="selectTimeSlot(slot)"
-                            >
-                                <i class="pi pi-clock" aria-hidden="true"></i>
-                                {{ slot.label }}
-                            </button>
+                                <button
+                                    v-for="slot in timeShortcuts"
+                                    :key="slot.label"
+                                    type="button"
+                                    class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition"
+                                    :class="requestForm.start_time === slot.start && requestForm.end_time === slot.end
+                                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-emerald-600/20 dark:border-emerald-400 dark:bg-emerald-500'
+                                        : 'border-emerald-100 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-emerald-500/10'"
+                                    @click="selectTimeSlot(slot)"
+                                >
+                                    <i class="pi pi-clock" aria-hidden="true"></i>
+                                    {{ slot.label }}
+                                </button>
                             </div>
                         </div>
 
@@ -516,9 +517,9 @@ onMounted(async () => {
                                     <p class="font-semibold text-gray-900 dark:text-white">Selected slot</p>
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Only workers free for this full duration will receive the request.</p>
                                 </div>
-                                <span class="inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
+                                <span class="inline-flex w-fit max-w-full items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
                                     <i class="pi pi-calendar-clock" aria-hidden="true"></i>
-                                    {{ requestSlotLabel }}
+                                    <span class="truncate">{{ requestSlotLabel }}</span>
                                 </span>
                             </div>
                             <p v-if="errors.end_time?.length" class="mt-2 text-sm text-red-600 dark:text-red-300">{{ errors.end_time[0] }}</p>
@@ -536,17 +537,7 @@ onMounted(async () => {
 
                         <div class="mt-4 grid gap-4 lg:grid-cols-2">
                             <FormInput id="request_address" v-model="requestForm.address" label="Address" :error="errors.address" />
-                            <div>
-                        <label for="request_issue_description" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Issue description</label>
-                        <textarea
-                            id="request_issue_description"
-                            v-model="requestForm.issue_description"
-                            rows="3"
-                            class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
-                            placeholder="Example: AC is not cooling properly."
-                        ></textarea>
-                        <p v-if="errors.issue_description?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.issue_description[0] }}</p>
-                            </div>
+                            <FormTextarea id="request_issue_description" v-model="requestForm.issue_description" label="Issue description" rows="3" placeholder="Example: AC is not cooling properly." :error="errors.issue_description" />
                         </div>
                     </div>
 

@@ -59,6 +59,19 @@ class WorkerAvailabilityTest extends TestCase
         ]);
     }
 
+    public function test_worker_schedule_uses_custom_required_time_messages(): void
+    {
+        Sanctum::actingAs($this->workerUser());
+
+        $this->postJson('/api/worker/schedules', [
+            'day_of_week' => 2,
+            'is_off_day' => false,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.start_time.0', 'Please provide a start time unless this is marked as an off day.')
+            ->assertJsonPath('errors.end_time.0', 'Please provide an end time unless this is marked as an off day.');
+    }
+
     public function test_availability_slots_exclude_existing_booking_time(): void
     {
         Sanctum::actingAs($worker = $this->workerUser());

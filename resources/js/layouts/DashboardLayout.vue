@@ -21,6 +21,7 @@ const navigationByRole = {
         { label: 'Dashboard', path: '/customer/dashboard', icon: 'pi-home' },
         { label: 'Find Workers', path: '/customer/workers', icon: 'pi-search', requiresVerified: true },
         { label: 'Bookings', path: '/customer/bookings', icon: 'pi-calendar', requiresVerified: true },
+        { label: 'Disputes', path: '/customer/disputes', icon: 'pi-exclamation-circle', requiresVerified: true },
         { label: 'Notifications', path: '/notifications', icon: 'pi-bell' },
         { label: 'Profile', path: '/customer/profile', icon: 'pi-user' },
     ],

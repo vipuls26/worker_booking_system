@@ -7,14 +7,30 @@ import BookingTimeline from '../../components/common/BookingTimeline.vue';
 import RatingStars from '../../components/common/RatingStars.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
 import BookingStatusTracker from '../../components/customer/BookingStatusTracker.vue';
+import FormInput from '../../components/forms/FormInput.vue';
+import FormSelect from '../../components/forms/FormSelect.vue';
+import FormTextarea from '../../components/forms/FormTextarea.vue';
+import { useApiErrors } from '../../composables/useApiErrors';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
+import { createDispute } from '../../api/disputes';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 
 const route = useRoute();
 const bookingsStore = useCustomerBookingsStore();
+const { errors, setApiError, clearApiErrors } = useApiErrors();
 const cancelReason = ref('');
+const disputeSaving = ref(false);
 const booking = computed(() => bookingsStore.booking);
 const officialBooking = computed(() => booking.value?.booking || null);
+const activeDisputes = computed(() => officialBooking.value?.disputes?.filter((dispute) => ['open', 'under_review'].includes(dispute.status)) || []);
+const canOpenDispute = computed(() => {
+    if (! officialBooking.value) {
+        return false;
+    }
+
+    return ! ['pending', 'rejected', 'cancelled'].includes(officialBooking.value.status)
+        && activeDisputes.value.length === 0;
+});
 const canPayBooking = computed(() => officialBooking.value?.status === 'completed' && officialBooking.value?.payment_status !== 'paid');
 const paymentButtonLabel = computed(() => {
     if (officialBooking.value?.payment_status === 'paid') {
@@ -35,6 +51,18 @@ const reviewForm = reactive({
     rating: 0,
     review: '',
 });
+const disputeForm = reactive({
+    category: '',
+    title: '',
+    description: '',
+});
+const disputeCategories = [
+    { label: 'Service issue', value: 'service_issue' },
+    { label: 'Payment issue', value: 'payment_issue' },
+    { label: 'Worker no show', value: 'worker_no_show' },
+    { label: 'Customer issue', value: 'customer_issue' },
+    { label: 'Other', value: 'other' },
+];
 
 async function load() {
     try {
@@ -85,6 +113,33 @@ async function submitReview() {
         reviewForm.review = '';
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to submit review');
+    }
+}
+
+async function submitDispute() {
+    if (! officialBooking.value?.id) {
+        toast.error('Booking is not ready for dispute yet.');
+        return;
+    }
+
+    clearApiErrors();
+    disputeSaving.value = true;
+
+    try {
+        await createDispute({
+            booking_id: officialBooking.value.id,
+            ...disputeForm,
+        });
+        toast.success('Dispute opened');
+        disputeForm.category = '';
+        disputeForm.title = '';
+        disputeForm.description = '';
+        await load();
+    } catch (error) {
+        setApiError(error);
+        toast.error(error.response?.data?.message || 'Unable to open dispute');
+    } finally {
+        disputeSaving.value = false;
     }
 }
 
@@ -208,6 +263,38 @@ onMounted(load);
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <section v-if="officialBooking" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Dispute</p>
+                        <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Raise a booking issue</h3>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Open a dispute when this booking needs admin review.</p>
+                    </div>
+                    <RouterLink to="/customer/disputes" class="inline-flex w-fit items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5">
+                        <i class="pi pi-list" aria-hidden="true"></i>
+                        My disputes
+                    </RouterLink>
+                </div>
+
+                <div v-if="activeDisputes.length" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                    <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Active dispute already open</p>
+                    <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">{{ activeDisputes[0].title }} · {{ activeDisputes[0].status.replace('_', ' ') }}</p>
+                </div>
+
+                <form v-else-if="canOpenDispute" class="mt-5 grid gap-4 lg:grid-cols-2" @submit.prevent="submitDispute">
+                    <FormSelect id="dispute_category" v-model="disputeForm.category" label="Category" :options="disputeCategories" option-label="label" option-value="value" :error="errors.category" />
+                    <FormInput id="dispute_title" v-model="disputeForm.title" label="Title" :error="errors.title" />
+                    <FormTextarea id="dispute_description" v-model="disputeForm.description" class="lg:col-span-2" label="Description" rows="5" placeholder="Explain what happened and what support you need." :error="errors.description" />
+                    <div class="lg:col-span-2 sm:w-48">
+                        <AppButton type="submit" icon="pi-exclamation-circle" :loading="disputeSaving">Open dispute</AppButton>
+                    </div>
+                </form>
+
+                <p v-else class="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+                    Disputes open after a worker is selected and the booking moves beyond request stage.
+                </p>
             </section>
 
             <section v-if="booking.requests?.length" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">

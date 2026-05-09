@@ -54,6 +54,7 @@ class BookingResource extends JsonResource
             'timeline' => BookingActivityResource::collection($this->whenLoaded('activities')),
             'review' => new ReviewResource($this->whenLoaded('review')),
             'worker_review' => new ReviewResource($this->whenLoaded('workerReview')),
+            'disputes' => DisputeResource::collection($this->whenLoaded('disputes')),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

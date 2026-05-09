@@ -18,6 +18,7 @@ import WorkerReviewsPage from '../pages/worker/ReviewsPage.vue';
 import WorkerServicesPage from '../pages/worker/ServicesPage.vue';
 import CustomerBookingDetailPage from '../pages/customer/BookingDetailPage.vue';
 import CustomerBookingsPage from '../pages/customer/BookingsPage.vue';
+import CustomerDisputesPage from '../pages/customer/DisputesPage.vue';
 import CustomerProfilePage from '../pages/customer/ProfilePage.vue';
 import CustomerWorkerDetailPage from '../pages/customer/WorkerDetailPage.vue';
 import CustomerWorkerListingPage from '../pages/customer/WorkerListingPage.vue';
@@ -176,6 +177,12 @@ const routes = [
         path: '/customer/bookings/:id',
         name: 'customer.bookings.show',
         component: CustomerBookingDetailPage,
+        meta: { requiresAuth: true, role: 'customer', requiresVerified: true },
+    },
+    {
+        path: '/customer/disputes',
+        name: 'customer.disputes',
+        component: CustomerDisputesPage,
         meta: { requiresAuth: true, role: 'customer', requiresVerified: true },
     },
 ];

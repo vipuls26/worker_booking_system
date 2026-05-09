@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Customer\BookingController as CustomerBookingController;
 use App\Http\Controllers\Api\Customer\WorkerSearchController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DisputeController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\RoleController;
@@ -60,6 +61,16 @@ Route::middleware(['auth:sanctum', 'not.blocked'])->prefix('notifications')->gro
     Route::delete('clear-all', [NotificationController::class, 'clearAll']);
     Route::patch('{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::delete('{notification}', [NotificationController::class, 'destroy']);
+});
+
+Route::middleware(['auth:sanctum', 'not.blocked', 'verified', 'platform.verified'])->group(function (): void {
+    Route::apiResource('disputes', DisputeController::class)
+        ->only(['index', 'store', 'show'])
+        ->names([
+            'index' => 'user-disputes.index',
+            'store' => 'user-disputes.store',
+            'show' => 'user-disputes.show',
+        ]);
 });
 
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin')->group(function (): void {

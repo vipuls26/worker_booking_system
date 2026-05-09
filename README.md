@@ -19,9 +19,9 @@ A Laravel API and Vue single-page application for booking verified local workers
 - Email verification and platform verification gates.
 - Customer worker search with service, city, price, rating, date, time, duration, and sorting filters.
 - Auto-matched service requests sent to multiple eligible workers.
-- Direct worker requests sent to one chosen worker.
+- Customer requests sent to one chosen worker.
 - Worker request responses with accept, reject, and cancel flows.
-- Direct worker requests auto-confirm when the single worker accepts.
+- Customer requests auto-confirm when the single worker accepts.
 - Customer final worker selection for multi-worker requests.
 - Booking status workflow from confirmed to in progress, completed, cancelled, and payment-ready states.
 - Manual payment recording with platform commission and worker earning breakdowns.

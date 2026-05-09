@@ -4,7 +4,6 @@ import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { workerDashboard } from '../api/worker/dashboard';
 import AnalyticsBarChart from '../components/common/AnalyticsBarChart.vue';
-import AnalyticsLineChart from '../components/common/AnalyticsLineChart.vue';
 import AnalyticsTable from '../components/common/AnalyticsTable.vue';
 import AppPanel from '../components/common/AppPanel.vue';
 import DashboardCard from '../components/common/DashboardCard.vue';
@@ -17,7 +16,6 @@ const loading = ref(true);
 const analytics = ref({
     cards: [],
     earnings_chart: [],
-    earnings_periods: [],
     booking_statuses: [],
     top_services: [],
     recent_reviews: [],
@@ -141,7 +139,7 @@ onMounted(async () => {
             </div>
 
             <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_340px]">
-                <AnalyticsLineChart title="Daily, weekly, monthly earnings" subtitle="Only paid bookings are counted here." :items="analytics.earnings_periods" value-prefix="₹" chart-type="pie" />
+                <AnalyticsBarChart title="Monthly paid earnings" subtitle="Only paid bookings are counted here." :items="analytics.earnings_chart" value-prefix="₹" variant="line" />
                 <div class="grid gap-3">
                     <div v-for="item in earningsSummary" :key="item.label" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-gray-950">
                         <div class="flex items-center justify-between gap-3">

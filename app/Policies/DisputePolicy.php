@@ -29,9 +29,7 @@ class DisputePolicy
     public function create(User $user, Booking $booking): bool
     {
         return ($booking->customer_id === $user->id || $booking->worker_id === $user->id)
-            && $booking->customer_id !== null
-            && $booking->worker_id !== null
-            && ! in_array($booking->status, [Booking::STATUS_PENDING, Booking::STATUS_REQUESTED, Booking::STATUS_REJECTED, Booking::STATUS_CANCELLED], true);
+            && ! in_array($booking->status, [Booking::STATUS_PENDING, Booking::STATUS_REJECTED, Booking::STATUS_CANCELLED], true);
     }
 
     public function resolve(User $user, Dispute $dispute): bool

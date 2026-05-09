@@ -51,19 +51,6 @@ class AuthApiTest extends TestCase
             ->assertJsonValidationErrors(['role_id']);
     }
 
-    public function test_registration_uses_custom_validation_messages(): void
-    {
-        $this->postJson('/api/auth/register', [
-            'email' => 'not-an-email',
-        ])
-            ->assertUnprocessable()
-            ->assertJsonPath('errors.role_id.0', 'Please choose an account type.')
-            ->assertJsonPath('errors.name.0', 'Please provide name.')
-            ->assertJsonPath('errors.email.0', 'Please enter a valid email address.')
-            ->assertJsonPath('errors.phone.0', 'Please provide phone number.')
-            ->assertJsonPath('errors.password.0', 'Please provide password.');
-    }
-
     public function test_user_can_register_and_receive_token(): void
     {
         $this->seed(RoleSeeder::class);

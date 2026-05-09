@@ -7,7 +7,6 @@ use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\Service;
 use App\Models\User;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -28,7 +27,6 @@ class DashboardAnalyticsService
             'cards' => $this->cards(),
             'revenue_reports' => [
                 'monthly' => $this->monthlyRevenue(),
-                'periods' => $this->periodRevenue(),
                 'by_status' => $this->revenueByStatus(),
             ],
             'booking_statuses' => $this->bookingStatuses(),
@@ -86,37 +84,6 @@ class DashboardAnalyticsService
                 'label' => (string) $payment->label,
                 'value' => round((float) $payment->value, 2),
             ]);
-    }
-
-    /**
-     * @return Collection<int, array{label: string, value: float}>
-     */
-    private function periodRevenue(): Collection
-    {
-        $now = CarbonImmutable::now();
-
-        return collect([
-            [
-                'label' => 'Today',
-                'value' => $this->paidCommissionSince($now->startOfDay()),
-            ],
-            [
-                'label' => 'This week',
-                'value' => $this->paidCommissionSince($now->startOfWeek()),
-            ],
-            [
-                'label' => 'This month',
-                'value' => $this->paidCommissionSince($now->startOfMonth()),
-            ],
-        ]);
-    }
-
-    private function paidCommissionSince(CarbonImmutable $startDate): float
-    {
-        return round((float) Payment::query()
-            ->where('status', Payment::STATUS_PAID)
-            ->where('paid_at', '>=', $startDate)
-            ->sum('platform_commission'), 2);
     }
 
     /**

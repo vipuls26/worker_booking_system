@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import { adminDashboard } from '../../api/admin';
 import AnalyticsBarChart from '../../components/common/AnalyticsBarChart.vue';
-import AnalyticsLineChart from '../../components/common/AnalyticsLineChart.vue';
 import AnalyticsTable from '../../components/common/AnalyticsTable.vue';
 import DashboardCard from '../../components/common/DashboardCard.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
@@ -16,7 +15,7 @@ const stats = ref({
     total_bookings: 0,
     total_revenue: 0,
     cards: [],
-    revenue_reports: { monthly: [], periods: [], by_status: [] },
+    revenue_reports: { monthly: [], by_status: [] },
     booking_statuses: [],
     popular_services: [],
 });
@@ -85,9 +84,9 @@ onMounted(async () => {
         </div>
 
         <div v-else class="mt-6 grid gap-5 lg:grid-cols-2">
-            <AnalyticsLineChart class="lg:col-span-2" title="Daily, weekly, monthly revenue" subtitle="Platform commission from paid bookings by period." :items="stats.revenue_reports.periods" value-prefix="₹" chart-type="pie" />
+            <AnalyticsBarChart class="lg:col-span-2" title="Monthly commission graph" subtitle="Platform commission from paid bookings." :items="stats.revenue_reports.monthly" value-prefix="₹" variant="line" />
             <AnalyticsBarChart title="Booking status statistics" subtitle="Current booking workflow distribution." :items="stats.booking_statuses" />
-            <AnalyticsLineChart title="Revenue by payment status" subtitle="Commission grouped by payment state." :items="stats.revenue_reports.by_status" value-prefix="₹" chart-type="pie" />
+            <AnalyticsBarChart title="Revenue by payment status" subtitle="Commission grouped by payment state." :items="stats.revenue_reports.by_status" value-prefix="₹" />
             <AnalyticsTable title="Popular services" :rows="stats.popular_services" :columns="serviceColumns" />
         </div>
     </AdminLayout>

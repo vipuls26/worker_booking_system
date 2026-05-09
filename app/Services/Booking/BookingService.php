@@ -168,14 +168,6 @@ class BookingService
             'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
         ]);
 
-        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $this->shouldAutoSelectAcceptedWorker($serviceRequestWorker)) {
-            $serviceRequest = $serviceRequestWorker->serviceRequest()->with('customer')->firstOrFail();
-
-            $this->selectFinalWorker($serviceRequest, $serviceRequest->customer, $serviceRequestWorker->id);
-
-            $serviceRequestWorker = $serviceRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role']);
-        }
-
         return $serviceRequestWorker;
     }
 
@@ -337,15 +329,6 @@ class BookingService
         return 60;
     }
 
-    private function shouldAutoSelectAcceptedWorker(ServiceRequestWorker $serviceRequestWorker): bool
-    {
-        return $serviceRequestWorker->serviceRequest()
-            ->where('status', ServiceRequest::STATUS_OPEN)
-            ->whereHas('workers', fn ($query) => $query->whereKey($serviceRequestWorker->id))
-            ->withCount('workers')
-            ->first()?->workers_count === 1;
-    }
-
     private function totalAmount(WorkerService $workerService, int $durationMinutes): float
     {
         if ($workerService->pricing_type === WorkerService::PricingHourly) {
@@ -399,9 +382,6 @@ class BookingService
             'activities.actor.role',
             'review.customer.role',
             'workerReview.worker.role',
-            'disputes.openedBy.role',
-            'disputes.againstUser.role',
-            'disputes.statusHistory.actor.role',
         ];
     }
 
@@ -422,9 +402,6 @@ class BookingService
             'booking.activities.actor.role',
             'booking.review.customer.role',
             'booking.workerReview.worker.role',
-            'booking.disputes.openedBy.role',
-            'booking.disputes.againstUser.role',
-            'booking.disputes.statusHistory.actor.role',
             'workers.worker' => fn ($query) => $query
                 ->with(['role', 'workerProfile'])
                 ->withAvg('workerReviews as rating_average', 'rating')

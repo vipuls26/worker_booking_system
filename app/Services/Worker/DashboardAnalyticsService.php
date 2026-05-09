@@ -41,7 +41,6 @@ class DashboardAnalyticsService
                 ->count(),
             'cards' => $this->cards($earnings, $pendingPayout, $completedBookingsCount, $averageRating),
             'earnings_chart' => $this->monthlyEarnings($worker),
-            'earnings_periods' => $this->periodEarnings($worker),
             'booking_statuses' => $this->bookingStatuses($worker),
             'top_services' => $this->topServices($worker),
             'recent_reviews' => $this->recentReviews($worker),
@@ -83,38 +82,6 @@ class DashboardAnalyticsService
                 'label' => (string) $payment->label,
                 'value' => round((float) $payment->value, 2),
             ]);
-    }
-
-    /**
-     * @return Collection<int, array{label: string, value: float}>
-     */
-    private function periodEarnings(User $worker): Collection
-    {
-        $now = CarbonImmutable::now();
-
-        return collect([
-            [
-                'label' => 'Today',
-                'value' => $this->paidEarningsSince($worker, $now->startOfDay()),
-            ],
-            [
-                'label' => 'This week',
-                'value' => $this->paidEarningsSince($worker, $now->startOfWeek()),
-            ],
-            [
-                'label' => 'This month',
-                'value' => $this->paidEarningsSince($worker, $now->startOfMonth()),
-            ],
-        ]);
-    }
-
-    private function paidEarningsSince(User $worker, CarbonImmutable $startDate): float
-    {
-        return round((float) Payment::query()
-            ->where('worker_id', $worker->id)
-            ->where('status', Payment::STATUS_PAID)
-            ->where('paid_at', '>=', $startDate)
-            ->sum('worker_earning'), 2);
     }
 
     /**

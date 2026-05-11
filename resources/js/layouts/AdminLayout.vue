@@ -17,6 +17,7 @@ const authStore = useAuthStore();
 const navigation = [
     { label: 'Dashboard', path: '/admin/dashboard', icon: 'pi-chart-line' },
     { label: 'Services', path: '/admin/services', icon: 'pi-briefcase' },
+    { label: 'Commission', path: '/admin/commission-settings', icon: 'pi-percentage' },
     { label: 'Service Requests', path: '/admin/worker-service-requests', icon: 'pi-send' },
     { label: 'Users', path: '/admin/users', icon: 'pi-users' },
     { label: 'Unblock Requests', path: '/admin/unblock-requests', icon: 'pi-unlock' },

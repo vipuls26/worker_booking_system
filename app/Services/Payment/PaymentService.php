@@ -8,6 +8,7 @@ use App\Models\ServiceRequest;
 use App\Models\User;
 use App\Models\WorkerPayout;
 use App\Services\Audit\AuditLogger;
+use App\Services\CommissionSettingService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,6 +19,7 @@ class PaymentService
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly WorkerPayoutService $payouts,
+        private readonly CommissionSettingService $commissionSettings,
     ) {}
 
     /**
@@ -186,7 +188,7 @@ class PaymentService
      */
     private function currentCommissionRate(): float
     {
-        return Booking::DefaultCommissionRate;
+        return $this->commissionSettings->currentRate();
     }
 
     /**

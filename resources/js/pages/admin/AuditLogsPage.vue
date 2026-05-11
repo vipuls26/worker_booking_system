@@ -40,6 +40,7 @@ const actionOptions = [
     { id: 'booking.status_changed', name: 'Booking status changed' },
     { id: 'payment.paid', name: 'Payment paid' },
     { id: 'worker_payout.weekly_paid', name: 'Weekly payout' },
+    { id: 'admin.commission_rate_updated', name: 'Commission updated' },
     { id: 'admin.worker_service_approved', name: 'Service approved' },
     { id: 'admin.worker_service_rejected', name: 'Service rejected' },
 ];

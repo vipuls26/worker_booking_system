@@ -8,6 +8,14 @@ export function adminRevenue() {
     return http.get('/admin/revenue');
 }
 
+export function adminCommissionSetting() {
+    return http.get('/admin/commission-settings');
+}
+
+export function updateAdminCommissionSetting(payload) {
+    return http.patch('/admin/commission-settings', payload);
+}
+
 export function adminAuditLogs(params = {}) {
     return http.get('/admin/audit-logs', { params });
 }

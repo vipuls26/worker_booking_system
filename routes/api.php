@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Account\ProfileController as AccountProfileController;
 use App\Http\Controllers\Api\Account\UnblockRequestController;
 use App\Http\Controllers\Api\Admin\AuditLogController as AdminAuditLogController;
+use App\Http\Controllers\Api\Admin\CommissionSettingController as AdminCommissionSettingController;
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\Admin\DisputeController as AdminDisputeController;
 use App\Http\Controllers\Api\Admin\RevenueController as AdminRevenueController;
@@ -76,6 +77,8 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'verified', 'platform.verified
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin')->group(function (): void {
     Route::get('dashboard', AdminDashboardController::class);
     Route::get('revenue', AdminRevenueController::class);
+    Route::get('commission-settings', [AdminCommissionSettingController::class, 'show']);
+    Route::patch('commission-settings', [AdminCommissionSettingController::class, 'update']);
     Route::get('audit-logs', AdminAuditLogController::class);
     Route::get('audit-logs/users/{user}', [AdminAuditLogController::class, 'user']);
     Route::get('audit-logs/bookings/{booking}', [AdminAuditLogController::class, 'booking']);

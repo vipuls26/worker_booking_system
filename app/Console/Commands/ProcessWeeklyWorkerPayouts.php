@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 #[Signature('payouts:process-weekly {--date= : Week ending date in Y-m-d format}')]
 #[Description('Create paid payout records for all workers with pending paid earnings.')]

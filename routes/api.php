@@ -111,13 +111,8 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
 
     // Show admin revenue analytics.
     Route::get('revenue', AdminRevenueController::class);
-<<<<<<< HEAD
     Route::get('commission-settings', [AdminCommissionSettingController::class, 'show']);
     Route::patch('commission-settings', [AdminCommissionSettingController::class, 'update']);
-=======
-
-    // List platform audit log entries.
->>>>>>> 8e26619 (fix console file)
     Route::get('audit-logs', AdminAuditLogController::class);
 
     // List audit log entries for one user.

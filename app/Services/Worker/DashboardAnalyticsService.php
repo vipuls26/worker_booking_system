@@ -69,6 +69,7 @@ class DashboardAnalyticsService
     {
         $monthExpression = $this->monthExpression('paid_at');
 
+        // Worker earnings charts include only paid customer payments for that worker.
         return Payment::query()
             ->where('worker_id', $worker->id)
             ->where('status', Payment::STATUS_PAID)
@@ -110,6 +111,7 @@ class DashboardAnalyticsService
 
     private function paidEarningsSince(User $worker, CarbonImmutable $startDate): float
     {
+        // Period earnings are based on settled payments since the selected date.
         return round((float) Payment::query()
             ->where('worker_id', $worker->id)
             ->where('status', Payment::STATUS_PAID)
@@ -122,6 +124,7 @@ class DashboardAnalyticsService
      */
     private function bookingStatuses(User $worker): Collection
     {
+        // Worker booking status totals show the provider's current workload mix.
         return $worker->workerBookings()
             ->select('status as label')
             ->selectRaw('COUNT(*) as value')
@@ -139,6 +142,7 @@ class DashboardAnalyticsService
      */
     private function topServices(User $worker): Collection
     {
+        // Top services are ranked by the worker's booking volume.
         $bookingStats = $worker->workerBookings()
             ->join('services', 'services.id', '=', 'bookings.service_id')
             ->select('services.id', 'services.name')
@@ -149,6 +153,7 @@ class DashboardAnalyticsService
             ->get()
             ->keyBy('id');
 
+        // Earnings are attached separately so booking volume remains the ranking driver.
         $earningStats = Payment::query()
             ->join('bookings', 'bookings.id', '=', 'payments.booking_id')
             ->select('bookings.service_id')
@@ -174,6 +179,7 @@ class DashboardAnalyticsService
      */
     private function recentReviews(User $worker): Collection
     {
+        // Worker dashboards show the latest customer feedback for reputation awareness.
         return Review::query()
             ->with('customer:id,name')
             ->where('worker_id', $worker->id)
@@ -189,6 +195,7 @@ class DashboardAnalyticsService
 
     private function completedBookings(User $worker): HasMany
     {
+        // Completed bookings are the basis for worker completion metrics.
         return $worker->workerBookings()->where('status', Booking::STATUS_COMPLETED);
     }
 

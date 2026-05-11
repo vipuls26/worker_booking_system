@@ -21,6 +21,7 @@ class BookingController extends Controller
 
     public function index(IndexWorkerBookingsRequest $request): JsonResponse
     {
+        // Worker booking history is scoped to the authenticated provider.
         $bookings = $this->bookings->workerBookings(
             $request->user(),
             $request->string('status')->toString() ?: null,
@@ -39,6 +40,7 @@ class BookingController extends Controller
 
     public function show(Booking $booking): JsonResponse
     {
+        // Workers can view only bookings assigned to them unless policy grants broader access.
         Gate::authorize('view', $booking);
 
         return response()->json([
@@ -52,6 +54,7 @@ class BookingController extends Controller
 
     public function requests(IndexWorkerBookingsRequest $request): JsonResponse
     {
+        // Booking requests are invitations the worker can accept or reject.
         $bookingRequests = $this->bookings->workerRequests(
             $request->user(),
             $request->string('status')->toString() ?: null,
@@ -70,6 +73,7 @@ class BookingController extends Controller
 
     public function showRequest(ServiceRequestWorker $bookingRequest): JsonResponse
     {
+        // Request details are hidden from other workers even when they know the ID.
         $this->ensureRequestOwnedByWorker($bookingRequest);
 
         return response()->json([
@@ -85,6 +89,7 @@ class BookingController extends Controller
 
     public function respond(RespondBookingRequestRequest $request, ServiceRequestWorker $bookingRequest): JsonResponse
     {
+        // Worker responses update the request and may auto-confirm one-worker bookings.
         return response()->json([
             'success' => true,
             'message' => 'Booking request updated',
@@ -103,9 +108,11 @@ class BookingController extends Controller
 
     public function updateStatus(UpdateBookingStatusRequest $request, Booking $booking): JsonResponse
     {
+        // Workers can move only their own bookings through allowed workflow statuses.
         Gate::authorize('updateStatus', $booking);
 
         $status = $request->string('status')->toString();
+        // Cancellation and rejection use different reason fields for clearer customer messaging.
         $reasonField = $status === Booking::STATUS_CANCELLED ? 'cancelled_reason' : 'rejection_reason';
         $reason = $request->string($reasonField)->toString() ?: null;
 
@@ -120,6 +127,7 @@ class BookingController extends Controller
 
     private function ensureRequestOwnedByWorker(ServiceRequestWorker $bookingRequest): void
     {
+        // Unknown and unauthorized request IDs both return 404 to avoid leaking worker invitations.
         abort_if($bookingRequest->worker_id !== request()->user()?->id, 404);
     }
 }

@@ -17,8 +17,10 @@ class DisputeController extends Controller
 
     public function index(): JsonResponse
     {
+        // Dispute lists are available only to users allowed to participate in disputes.
         Gate::authorize('viewAny', Dispute::class);
 
+        // User dispute history is limited to disputes where the user is involved.
         $disputes = $this->disputes->paginateForUser(request()->user());
 
         return response()->json([
@@ -33,6 +35,7 @@ class DisputeController extends Controller
 
     public function store(StoreDisputeRequest $request): JsonResponse
     {
+        // Opening a dispute delegates booking-party checks to the dispute service and policy.
         $dispute = $this->disputes->create($request->user(), $request->validated());
 
         return response()->json([
@@ -46,6 +49,7 @@ class DisputeController extends Controller
 
     public function show(Dispute $dispute): JsonResponse
     {
+        // Dispute details are visible only to involved parties or admins.
         Gate::authorize('view', $dispute);
 
         return response()->json([

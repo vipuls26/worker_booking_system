@@ -28,6 +28,7 @@ class DisputePolicy
 
     public function create(User $user, Booking $booking): bool
     {
+        // A dispute requires both booking parties and a workflow state worth resolving.
         return ($booking->customer_id === $user->id || $booking->worker_id === $user->id)
             && $booking->customer_id !== null
             && $booking->worker_id !== null
@@ -36,6 +37,7 @@ class DisputePolicy
 
     public function resolve(User $user, Dispute $dispute): bool
     {
+        // Admins can resolve only disputes that have not already received a final decision.
         return $user->hasRole('admin') && ! in_array($dispute->status, [Dispute::STATUS_RESOLVED, Dispute::STATUS_REJECTED], true);
     }
 }

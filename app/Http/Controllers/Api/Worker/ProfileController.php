@@ -15,6 +15,7 @@ class ProfileController extends Controller
 
     public function show(Request $request): JsonResponse
     {
+        // Workers always receive a profile record so onboarding screens can be edited immediately.
         $profile = $this->profiles->getOrCreate($request->user());
 
         return response()->json([
@@ -28,6 +29,7 @@ class ProfileController extends Controller
 
     public function update(UpdateWorkerProfileRequest $request): JsonResponse
     {
+        // Profile updates manage marketplace-facing worker details.
         $profile = $this->profiles->update($request->user(), $request->validated());
 
         return response()->json([

@@ -29,6 +29,7 @@ class PaymentService
 
         $booking = $serviceRequest->booking;
 
+        // Customers must select a worker before checkout can charge for the final booking.
         if (! $booking) {
             throw ValidationException::withMessages([
                 'booking' => ['Select a worker before paying for this booking.'],
@@ -46,17 +47,20 @@ class PaymentService
         abort_if($booking->customer_id !== $customer->id, 404);
 
         return DB::transaction(function () use ($booking, $customer, $data): Payment {
+            // Lock the booking so concurrent checkout attempts cannot create duplicate payments.
             $booking = Booking::query()
                 ->whereKey($booking->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            // A booking can be paid only once.
             if ($booking->payment_status === Booking::PAYMENT_PAID) {
                 throw ValidationException::withMessages([
                     'payment' => ['This booking has already been paid.'],
                 ]);
             }
 
+            // The platform collects payment only after service completion.
             if ($booking->status !== Booking::STATUS_COMPLETED) {
                 throw ValidationException::withMessages([
                     'payment' => ['Payment is available only after the service is completed.'],
@@ -102,6 +106,7 @@ class PaymentService
      */
     public function adminSummary(): array
     {
+        // Admin revenue totals are based only on settled payments.
         $paidPayments = Payment::query()->where('status', Payment::STATUS_PAID);
 
         return [
@@ -123,6 +128,7 @@ class PaymentService
      */
     public function workerSummary(User $worker): array
     {
+        // Worker earning summaries use paid customer payments and completed payout records.
         $paidPayments = Payment::query()
             ->where('worker_id', $worker->id)
             ->where('status', Payment::STATUS_PAID);
@@ -146,6 +152,7 @@ class PaymentService
      */
     public function workerPayments(User $worker): Collection
     {
+        // Workers see their most recent settled customer payments.
         return Payment::query()
             ->with(['booking.service', 'customer.role'])
             ->where('worker_id', $worker->id)

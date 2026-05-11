@@ -33,6 +33,7 @@ class BookingService
         return DB::transaction(function () use ($customer, $data): ServiceRequest {
             $address = $data['address'] ?? $customer->customerProfile?->address;
 
+            // Customers must have a usable service address before workers can quote or travel.
             if (! $address) {
                 throw ValidationException::withMessages([
                     'address' => ['Add a service address or save a default address in your profile.'],
@@ -45,9 +46,10 @@ class BookingService
                 'duration_minutes' => $durationMinutes,
             ]);
 
+            // Booking requests should only be opened when at least one verified worker can serve the slot.
             if ($workerServices->isEmpty()) {
                 throw ValidationException::withMessages([
-                    'service_id' => ['No verified and available workers match this service and time slot.'],
+                    'service_id' => ['No verified workers are available for this service at the selected date and time. Please choose another time or service.'],
                 ]);
             }
 
@@ -104,6 +106,7 @@ class BookingService
 
     public function customerBookings(User $customer, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
+        // Customers should only see their own service requests, optionally narrowed by workflow status.
         return ServiceRequest::query()
             ->where('customer_id', $customer->id)
             ->with($this->serviceRequestRelations())
@@ -114,6 +117,7 @@ class BookingService
 
     public function workerBookings(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
+        // Workers need their assigned bookings with related customer, service, activity, and review context.
         return $worker->workerBookings()
             ->with(['customer.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])
             ->when($status, fn ($query) => $query->where('status', $status))
@@ -123,6 +127,7 @@ class BookingService
 
     public function workerRequests(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
     {
+        // Workers respond from their own request queue, so never expose other workers' invitations.
         return ServiceRequestWorker::query()
             ->with(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role'])
             ->where('worker_id', $worker->id)
@@ -135,15 +140,20 @@ class BookingService
     {
         abort_if($serviceRequestWorker->worker_id !== $worker->id, 404);
 
+        // A worker response is final for the pending invitation to avoid conflicting quotes.
         if ($serviceRequestWorker->status !== ServiceRequestWorker::STATUS_PENDING) {
             throw ValidationException::withMessages(['status' => ['This request has already been answered.']]);
         }
 
+        // Closed service requests cannot accept new worker responses after customer action or cancellation.
         if ($serviceRequestWorker->serviceRequest()->where('status', '!=', ServiceRequest::STATUS_OPEN)->exists()) {
             throw ValidationException::withMessages(['status' => ['This booking request is no longer open.']]);
         }
 
+        // Accepted responses reserve real availability, so re-check eligibility and schedule before saving.
         if ($status === ServiceRequestWorker::STATUS_ACCEPTED) {
+            $this->ensureWorkerCanReceiveBooking($worker, 'status');
+
             $serviceRequest = $serviceRequestWorker->serviceRequest;
             $durationMinutes = $this->durationMinutes([
                 'booking_date' => $serviceRequest->requested_date->toDateString(),
@@ -151,6 +161,7 @@ class BookingService
                 'end_time' => $serviceRequest->end_time,
             ]);
 
+            // Worker availability may have changed since the customer first opened the request.
             if (! $this->availability->isWorkerAvailable($worker, $serviceRequest->requested_date->toDateString(), $serviceRequest->start_time, $durationMinutes)) {
                 throw ValidationException::withMessages(['status' => ['You are no longer available for this booking slot.']]);
             }
@@ -171,17 +182,9 @@ class BookingService
             'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
         ]);
 
-<<<<<<< HEAD
+        // A one-worker request can become a confirmed booking as soon as that worker accepts.
         if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $serviceRequestWorker->serviceRequest->workers()->count() === 1) {
             return $this->selectSingleAcceptedWorkerRequest($serviceRequestWorker, $worker);
-=======
-        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $this->shouldAutoSelectAcceptedWorker($serviceRequestWorker)) {
-            $serviceRequest = $serviceRequestWorker->serviceRequest()->with('customer')->firstOrFail();
-
-            $this->selectFinalWorker($serviceRequest, $serviceRequest->customer, $serviceRequestWorker->id);
-
-            $serviceRequestWorker = $serviceRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role']);
->>>>>>> 437632d28bf4a5bfe01063593d0facd0b2f6527e
         }
 
         return $serviceRequestWorker;
@@ -192,10 +195,12 @@ class BookingService
         abort_if($serviceRequest->customer_id !== $customer->id, 404);
 
         return DB::transaction(function () use ($serviceRequest, $customer, $serviceRequestWorkerId): ServiceRequest {
+            // Customers can only choose a final worker while the request is still open.
             if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
                 throw ValidationException::withMessages(['booking_request_id' => ['This booking is not waiting for worker selection.']]);
             }
 
+            // Only accepted worker responses are eligible for customer selection.
             $serviceRequestWorker = $serviceRequest->workers()
                 ->with('worker')
                 ->whereKey($serviceRequestWorkerId)
@@ -234,6 +239,7 @@ class BookingService
     {
         abort_if($serviceRequest->customer_id !== $customer->id, 404);
 
+        // Service requests can be cancelled only before a worker has been selected.
         if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
             throw ValidationException::withMessages(['status' => ['Only open service requests can be cancelled before worker selection.']]);
         }
@@ -259,15 +265,18 @@ class BookingService
     private function selectSingleAcceptedWorkerRequest(ServiceRequestWorker $serviceRequestWorker, User $actor): ServiceRequestWorker
     {
         return DB::transaction(function () use ($serviceRequestWorker, $actor): ServiceRequestWorker {
+            // Lock the accepted response so duplicate worker/customer actions cannot create two bookings.
             $lockedRequestWorker = ServiceRequestWorker::query()
                 ->with(['worker', 'serviceRequest.customer'])
                 ->lockForUpdate()
                 ->findOrFail($serviceRequestWorker->id);
 
+            // Lock the parent request before deciding whether it should auto-confirm.
             $serviceRequest = ServiceRequest::query()
                 ->lockForUpdate()
                 ->findOrFail($lockedRequestWorker->service_request_id);
 
+            // Auto-selection is allowed only for still-open requests that invited a single accepted worker.
             if (
                 $serviceRequest->status === ServiceRequest::STATUS_OPEN
                 && $lockedRequestWorker->status === ServiceRequestWorker::STATUS_ACCEPTED
@@ -306,6 +315,9 @@ class BookingService
             'end_time' => $serviceRequest->end_time,
         ]);
 
+        $this->ensureWorkerCanReceiveBooking($serviceRequestWorker->worker, 'booking_request_id');
+
+        // A selected worker must still be eligible and free at the final confirmation moment.
         if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
             worker: $serviceRequestWorker->worker,
             date: $serviceRequest->requested_date->toDateString(),
@@ -380,12 +392,29 @@ class BookingService
         return $booking;
     }
 
+    private function ensureWorkerCanReceiveBooking(?User $worker, string $field): void
+    {
+        // Bookings should only be assigned to workers who completed all verification steps.
+        if (
+            ! $worker
+            || ! $worker->hasVerifiedEmail()
+            || ! $worker->is_verified
+            || ! $worker->loadMissing('workerProfile')->workerProfile?->is_verified
+        ) {
+            throw ValidationException::withMessages([
+                $field => ['This worker must complete email and platform verification before receiving bookings.'],
+            ]);
+        }
+    }
+
     private function durationMinutes(array $data): int
     {
+        // Explicit duration wins because some services are priced from the chosen slot length.
         if (! empty($data['duration_minutes'])) {
             return (int) $data['duration_minutes'];
         }
 
+        // When an end time is supplied, derive the duration so quotes match the scheduled window.
         if (! empty($data['end_time'])) {
             return CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])
                 ->diffInMinutes(CarbonImmutable::parse($data['booking_date'].' '.$data['end_time']));
@@ -396,6 +425,7 @@ class BookingService
 
     private function shouldAutoSelectAcceptedWorker(ServiceRequestWorker $serviceRequestWorker): bool
     {
+        // A service request can auto-select only when the accepted worker is its sole candidate.
         return $serviceRequestWorker->serviceRequest()
             ->where('status', ServiceRequest::STATUS_OPEN)
             ->whereHas('workers', fn ($query) => $query->whereKey($serviceRequestWorker->id))
@@ -405,6 +435,7 @@ class BookingService
 
     private function totalAmount(WorkerService $workerService, int $durationMinutes): float
     {
+        // Hourly workers are paid for the larger of their minimum hours or the requested duration.
         if ($workerService->pricing_type === WorkerService::PricingHourly) {
             $hours = max($workerService->minimum_hours ?: 1, (int) ceil($durationMinutes / 60));
 

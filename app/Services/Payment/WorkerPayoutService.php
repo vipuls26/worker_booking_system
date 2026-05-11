@@ -23,17 +23,20 @@ class WorkerPayoutService
     {
         $payouts = new Collection;
 
+        // Weekly payout processing scans only workers who have settled customer payments.
         User::query()
             ->with('role')
             ->whereHas('role', fn ($query) => $query->where('slug', 'worker'))
             ->whereHas('workerPayments', fn ($query) => $query->where('status', Payment::STATUS_PAID))
             ->chunkById(100, function ($workers) use ($periodStart, $periodEnd, $payouts): void {
                 foreach ($workers as $worker) {
+                    // Skip workers who are already fully paid out.
                     if ($this->pendingPayout($worker) <= 0) {
                         continue;
                     }
 
                     $payout = DB::transaction(function () use ($worker, $periodStart, $periodEnd): WorkerPayout {
+                        // Lock the worker before recalculating to avoid duplicate weekly payouts.
                         $lockedWorker = User::query()
                             ->with('role')
                             ->whereKey($worker->id)
@@ -41,6 +44,7 @@ class WorkerPayoutService
                             ->firstOrFail();
                         $lockedPendingPayout = $this->pendingPayout($lockedWorker);
 
+                        // A second guard catches races where another payout finished first.
                         if ($lockedPendingPayout <= 0) {
                             throw ValidationException::withMessages([
                                 'worker_id' => ['This worker does not have any pending payout.'],
@@ -78,6 +82,7 @@ class WorkerPayoutService
 
     public function pendingPayout(User $worker): float
     {
+        // Pending payout is the worker's settled earnings minus amounts already paid out.
         $paidEarnings = (float) $worker->workerPayments()
             ->where('status', Payment::STATUS_PAID)
             ->sum('worker_earning');
@@ -94,6 +99,7 @@ class WorkerPayoutService
      */
     public function workerPayouts(User $worker): Collection
     {
+        // Dashboard payout history shows the most recent processed transfers for the worker.
         return $worker->workerPayouts()
             ->with(['processor.role'])
             ->latest()

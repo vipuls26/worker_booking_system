@@ -18,6 +18,7 @@ class ProcessWeeklyWorkerPayouts extends Command
     public function handle(WorkerPayoutService $payouts): int
     {
         $today = CarbonImmutable::now();
+        // The payout period ends on the requested date or the most recent completed Sunday.
         $periodEnd = $this->option('date')
             ? CarbonImmutable::createFromFormat('Y-m-d', (string) $this->option('date'))->endOfDay()
             : ($today->isSunday() ? $today->endOfDay() : $today->previous(CarbonImmutable::SUNDAY)->endOfDay());

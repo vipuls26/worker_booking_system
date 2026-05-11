@@ -11,6 +11,7 @@ class RoleController extends Controller
 {
     public function index(): JsonResponse
     {
+        // Registration exposes only customer and worker roles, never admin roles.
         return response()->json([
             'success' => true,
             'message' => 'Roles retrieved',

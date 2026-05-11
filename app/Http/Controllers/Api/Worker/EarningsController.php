@@ -15,6 +15,7 @@ class EarningsController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
+        // Worker earnings combine settled payments, pending payout, and recent payout history.
         $summary = $this->payments->workerSummary($request->user());
 
         return response()->json([

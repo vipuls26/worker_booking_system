@@ -13,6 +13,7 @@ class RevenueController extends Controller
 
     public function __invoke(): JsonResponse
     {
+        // Revenue responses convert recent payments into API resources while keeping aggregate totals intact.
         $summary = $this->payments->adminSummary();
 
         return response()->json([

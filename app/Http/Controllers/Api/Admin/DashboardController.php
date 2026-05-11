@@ -12,6 +12,7 @@ class DashboardController extends Controller
 
     public function __invoke(): JsonResponse
     {
+        // Admin dashboards expose platform-wide booking, revenue, and service health metrics.
         return response()->json([
             'success' => true,
             'message' => 'Admin dashboard retrieved',

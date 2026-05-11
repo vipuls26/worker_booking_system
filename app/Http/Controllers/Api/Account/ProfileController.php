@@ -14,6 +14,7 @@ class ProfileController extends Controller
 
     public function update(UpdateProfileRequest $request): JsonResponse
     {
+        // Account profile updates may reset verification when business-critical contact details change.
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully',

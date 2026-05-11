@@ -46,11 +46,13 @@ class AuthService
      */
     public function login(array $credentials): array
     {
+        // Login needs the user and profile context returned with the token response.
         $user = User::query()
             ->with(['role', 'customerProfile', 'workerProfile', 'workerVerification'])
             ->where('email', $credentials['email'])
             ->first();
 
+        // Failed credentials should not reveal whether the email exists.
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],

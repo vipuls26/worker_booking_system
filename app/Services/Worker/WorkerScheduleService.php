@@ -13,6 +13,7 @@ class WorkerScheduleService
      */
     public function weeklySchedule(User $worker): Collection
     {
+        // Workers manage availability in weekday and time order.
         return $worker->workerSchedules()
             ->orderBy('day_of_week')
             ->orderBy('start_time')
@@ -47,10 +48,12 @@ class WorkerScheduleService
      */
     public function overlaps(User $worker, array $data, ?int $ignoreId = null): bool
     {
+        // Off-days and incomplete windows cannot overlap working availability.
         if ($data['is_off_day'] || empty($data['start_time']) || empty($data['end_time'])) {
             return false;
         }
 
+        // Working windows overlap when they share the same day and intersect in time.
         return $worker->workerSchedules()
             ->where('day_of_week', $data['day_of_week'])
             ->where('is_off_day', false)
@@ -69,10 +72,12 @@ class WorkerScheduleService
             ->where('day_of_week', $data['day_of_week'])
             ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId));
 
+        // A full day off cannot coexist with working windows for the same day.
         if ($data['is_off_day'] && (clone $query)->exists()) {
             return 'Remove working windows before marking this day as off.';
         }
 
+        // Working windows cannot be added while the day is marked unavailable.
         if (! $data['is_off_day'] && (clone $query)->where('is_off_day', true)->exists()) {
             return 'This day is marked as off. Remove the off-day entry before adding working windows.';
         }

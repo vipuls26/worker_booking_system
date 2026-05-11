@@ -15,6 +15,7 @@ class WorkerServiceApprovalService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        // Admins review worker service offerings with enough worker and category context to approve safely.
         return WorkerService::query()
             ->with(['worker:id,name,email,phone', 'service:id,name,slug,icon,is_active', 'reviewer:id,name'])
             ->when($request->filled('status'), fn ($query) => $query->where('approval_status', $request->string('status')->toString()))
@@ -39,6 +40,7 @@ class WorkerServiceApprovalService
     public function approve(WorkerService $workerService, User $admin): WorkerService
     {
         return DB::transaction(function () use ($workerService, $admin): WorkerService {
+            // Approved worker services become active marketplace offerings immediately.
             $workerService->update([
                 'approval_status' => WorkerService::StatusApproved,
                 'is_active' => true,
@@ -59,6 +61,7 @@ class WorkerServiceApprovalService
     public function reject(WorkerService $workerService, User $admin, string $reason): WorkerService
     {
         return DB::transaction(function () use ($workerService, $admin, $reason): WorkerService {
+            // Rejected worker services are hidden until the worker submits an acceptable offering.
             $workerService->update([
                 'approval_status' => WorkerService::StatusRejected,
                 'is_active' => false,

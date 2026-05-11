@@ -26,6 +26,7 @@ class BookingController extends Controller
 
     public function index(IndexCustomerBookingsRequest $request): JsonResponse
     {
+        // Customer booking history is scoped to the signed-in customer by the service layer.
         $bookings = $this->bookings->customerBookings(
             $request->user(),
             $request->string('status')->toString() ?: null,
@@ -44,6 +45,7 @@ class BookingController extends Controller
 
     public function store(StoreBookingRequest $request): JsonResponse
     {
+        // Customers must pass service request policy checks before workers are contacted.
         Gate::authorize('create', ServiceRequest::class);
 
         return response()->json([
@@ -57,6 +59,7 @@ class BookingController extends Controller
 
     public function show(ServiceRequest $booking): JsonResponse
     {
+        // Booking details are visible only to parties authorized by the service request policy.
         Gate::authorize('view', $booking);
 
         return response()->json([
@@ -70,6 +73,7 @@ class BookingController extends Controller
 
     public function selectWorker(SelectBookingWorkerRequest $request, ServiceRequest $booking): JsonResponse
     {
+        // Customer selection turns an accepted worker response into the final booking.
         Gate::authorize('selectWorker', $booking);
 
         return response()->json([
@@ -85,6 +89,7 @@ class BookingController extends Controller
 
     public function cancel(CancelOwnBookingRequest $request, ServiceRequest $booking): JsonResponse
     {
+        // Customers can cancel only open service requests before final worker selection.
         Gate::authorize('cancel', $booking);
 
         return response()->json([
@@ -100,6 +105,7 @@ class BookingController extends Controller
 
     public function pay(PayBookingRequest $request, ServiceRequest $booking): JsonResponse
     {
+        // Payment requires access to the service request and a finalized booking behind it.
         Gate::authorize('view', $booking);
 
         $payment = $this->payments->payForServiceRequest($booking->load('booking'), $request->user(), $request->validated());

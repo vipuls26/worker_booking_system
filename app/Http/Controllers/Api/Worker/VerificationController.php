@@ -15,6 +15,7 @@ class VerificationController extends Controller
 
     public function show(Request $request): JsonResponse
     {
+        // Workers need current verification status to understand booking eligibility.
         $verification = $this->verifications->get($request->user());
 
         return response()->json([
@@ -28,6 +29,7 @@ class VerificationController extends Controller
 
     public function store(SubmitWorkerVerificationRequest $request): JsonResponse
     {
+        // Verification submissions start or restart admin review for worker eligibility.
         return response()->json([
             'success' => true,
             'message' => 'Worker verification submitted for review',

@@ -21,6 +21,7 @@ class ScheduleController extends Controller
 
     public function index(): JsonResponse
     {
+        // Workers manage weekly availability windows for booking matching.
         return response()->json([
             'success' => true,
             'message' => 'Worker schedules retrieved',
@@ -32,6 +33,7 @@ class ScheduleController extends Controller
 
     public function store(StoreWorkerScheduleRequest $request): JsonResponse
     {
+        // New schedule windows immediately affect worker availability checks.
         $schedule = $this->schedules->create($request->user(), $request->validated());
 
         return response()->json([
@@ -45,6 +47,7 @@ class ScheduleController extends Controller
 
     public function update(UpdateWorkerScheduleRequest $request, WorkerSchedule $workerSchedule): JsonResponse
     {
+        // Workers can update only their own availability records.
         $this->ensureOwnedByWorker($workerSchedule);
 
         $schedule = $this->schedules->update($workerSchedule, $request->validated());
@@ -60,6 +63,7 @@ class ScheduleController extends Controller
 
     public function destroy(WorkerSchedule $workerSchedule): JsonResponse
     {
+        // Deleting a schedule removes that availability window from future matching.
         $this->ensureOwnedByWorker($workerSchedule);
 
         $this->schedules->delete($workerSchedule);
@@ -73,6 +77,7 @@ class ScheduleController extends Controller
 
     public function availability(WorkerAvailabilityRequest $request): JsonResponse
     {
+        // Availability previews show workers how their schedule appears for a specific date.
         $slots = $this->availability->slotsForDate(
             $request->user(),
             $request->validated('date'),
@@ -91,6 +96,7 @@ class ScheduleController extends Controller
 
     private function ensureOwnedByWorker(WorkerSchedule $workerSchedule): void
     {
+        // Missing and cross-worker schedule IDs both return 404 to avoid leaking records.
         abort_if($workerSchedule->worker_id !== request()->user()?->id, 404);
     }
 }

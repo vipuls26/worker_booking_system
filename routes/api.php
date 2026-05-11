@@ -107,12 +107,12 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
 
 });
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:worker'])->prefix('worker')->group(function (): void {
-    Route::get('dashboard', [DashboardController::class, 'worker']);
     Route::get('profile', [WorkerProfileController::class, 'show']);
     Route::post('profile', [WorkerProfileController::class, 'update']);
     Route::get('verification', [WorkerVerificationController::class, 'show']);
     Route::post('verification', [WorkerVerificationController::class, 'store']);
     Route::middleware(['verified', 'platform.verified'])->group(function (): void {
+        Route::get('dashboard', [DashboardController::class, 'worker']);
         Route::get('availability', [WorkerScheduleController::class, 'availability']);
         Route::get('earnings', WorkerEarningsController::class);
         Route::get('schedules', [WorkerScheduleController::class, 'index']);

@@ -17,6 +17,7 @@ class DisputeController extends Controller
 
     public function index(IndexDisputesRequest $request): JsonResponse
     {
+        // Admin dispute lists are filtered for triage and include pagination metadata for dashboards.
         $disputes = $this->disputes->paginateForAdmin($request->validated(), $request->integer('per_page', 15));
 
         return response()->json([
@@ -31,6 +32,7 @@ class DisputeController extends Controller
 
     public function show(Dispute $dispute): JsonResponse
     {
+        // Admin dispute details load all resolution context for decision making.
         return response()->json([
             'success' => true,
             'message' => 'Dispute retrieved',
@@ -42,6 +44,7 @@ class DisputeController extends Controller
 
     public function update(ResolveDisputeRequest $request, Dispute $dispute): JsonResponse
     {
+        // Dispute updates capture the admin decision and optional resolution note.
         return response()->json([
             'success' => true,
             'message' => 'Dispute updated',

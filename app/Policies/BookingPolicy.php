@@ -24,11 +24,13 @@ class BookingPolicy
 
     public function pay(User $user, Booking $booking): bool
     {
+        // Only the customer can pay, and only while the booking is still unpaid.
         return $booking->customer_id === $user->id && $booking->payment_status !== Booking::PAYMENT_PAID;
     }
 
     public function cancel(User $user, Booking $booking): bool
     {
+        // Customers may cancel only before the booking reaches a terminal workflow status.
         return $booking->customer_id === $user->id && in_array($booking->status, [Booking::STATUS_CONFIRMED, Booking::STATUS_PENDING], true);
     }
 
@@ -39,6 +41,7 @@ class BookingPolicy
 
     public function dispute(User $user, Booking $booking): bool
     {
+        // Disputes are reserved for involved parties on bookings that were not rejected or cancelled.
         return $this->view($user, $booking) && ! in_array($booking->status, [Booking::STATUS_CANCELLED, Booking::STATUS_REJECTED], true);
     }
 }

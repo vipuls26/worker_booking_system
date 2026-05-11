@@ -15,6 +15,7 @@ class EnsureUserHasRole
      */
     public function handle(Request $request, Closure $next, string $role): Response
     {
+        // Role middleware keeps customer, worker, and admin API surfaces separate.
         if (! $request->user()?->loadMissing('role')->hasRole($role)) {
             return response()->json([
                 'success' => false,

@@ -17,6 +17,7 @@ class WorkerMatchingService
     {
         $durationMinutes = (int) ($criteria['duration_minutes'] ?? 60);
 
+        // Matching starts from approved, active worker offerings for the requested service.
         return WorkerService::query()
             ->with(['service', 'worker.role', 'worker.workerProfile'])
             ->where('service_id', $criteria['service_id'])

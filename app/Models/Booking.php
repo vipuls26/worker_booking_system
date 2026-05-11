@@ -48,6 +48,12 @@ class Booking extends Model
         self::STATUS_IN_PROGRESS,
     ];
 
+    public const BookingOverlapStatuses = [
+        self::STATUS_ACCEPTED,
+        self::STATUS_CONFIRMED,
+        self::STATUS_IN_PROGRESS,
+    ];
+
     /** @use HasFactory<BookingFactory> */
     use HasFactory;
 

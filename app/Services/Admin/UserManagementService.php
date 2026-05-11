@@ -19,6 +19,7 @@ class UserManagementService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        // User management excludes admin accounts so staff accounts are handled through safer admin-only flows.
         $query = User::query()
             ->with(['role', 'customerProfile'])
             ->whereDoesntHave('role', fn ($query) => $query->where('slug', 'admin'))
@@ -39,6 +40,7 @@ class UserManagementService
             'email_verified_at' => null,
         ])->save();
 
+        // Blocking a worker also removes marketplace verification until an admin re-approves them.
         if ($user->loadMissing('role')->hasRole('worker')) {
             $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
                 'is_verified' => false,
@@ -72,6 +74,7 @@ class UserManagementService
 
         $user->update(['is_verified' => true]);
 
+        // Worker approval must keep the profile flag in sync for booking eligibility checks.
         if ($user->hasRole('worker')) {
             $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
                 'is_verified' => true,
@@ -88,6 +91,7 @@ class UserManagementService
      */
     public function delete(User $user, User $admin): void
     {
+        // Admins cannot delete themselves because the platform needs at least one active operator path.
         if ($user->is($admin)) {
             throw ValidationException::withMessages([
                 'user' => ['You cannot delete your own admin account.'],
@@ -108,6 +112,7 @@ class UserManagementService
      */
     private function ensureNotAdmin(User $user, string $message): void
     {
+        // Admin accounts are protected from customer/worker management actions.
         if ($user->loadMissing('role')->hasRole('admin')) {
             throw ValidationException::withMessages([
                 'user' => [$message],
@@ -117,6 +122,7 @@ class UserManagementService
 
     private function ensureEmailVerified(User $user): void
     {
+        // Email verification proves the user can receive account and booking notifications.
         if ($user->hasVerifiedEmail()) {
             return;
         }
@@ -128,14 +134,17 @@ class UserManagementService
 
     private function ensureWorkerVerificationApproved(User $user): void
     {
+        // Customers do not need worker document approval before account verification.
         if (! $user->loadMissing('role')->hasRole('worker')) {
             return;
         }
 
+        // Workers must have approved ID proof before admins mark the account platform-verified.
         $isApproved = $user->workerVerification()
             ->where('status', WorkerVerification::STATUS_APPROVED)
             ->exists();
 
+        // Approved verification is enough to continue account approval.
         if ($isApproved) {
             return;
         }

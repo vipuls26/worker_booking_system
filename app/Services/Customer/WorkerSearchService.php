@@ -19,6 +19,7 @@ class WorkerSearchService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        // Public worker search shows only verified workers with approved active services.
         $query = User::query()
             ->select('users.*')
             ->whereHas('role', fn ($query) => $query->where('slug', 'worker'))
@@ -62,6 +63,7 @@ class WorkerSearchService
 
     public function findWorker(User $worker): User
     {
+        // Worker detail pages should be available only for marketplace-ready workers.
         abort_unless(
             $worker->hasRole('worker')
             && ! $worker->is_blocked
@@ -145,6 +147,7 @@ class WorkerSearchService
 
     private function applyAvailabilityFilter($query, Request $request): void
     {
+        // Without a date, search should not restrict workers by schedule availability.
         if (! $request->filled('available_date')) {
             return;
         }
@@ -167,6 +170,7 @@ class WorkerSearchService
                 });
         });
 
+        // Date-only availability checks stop after confirming workers have a working window that day.
         if ($time === '') {
             return;
         }
@@ -201,6 +205,7 @@ class WorkerSearchService
 
     private function applyRatingFilter($query, Request $request): void
     {
+        // Minimum rating is optional because new workers may not have reviews yet.
         if ($request->filled('min_rating')) {
             $query->having('rating_average', '>=', (float) $request->input('min_rating'));
         }
@@ -222,6 +227,7 @@ class WorkerSearchService
      */
     public function availabilityForDetails(User $worker, ?string $date, int $slotMinutes = 60, ?int $serviceId = null): Collection
     {
+        // Worker detail pages show no slots until the customer chooses a date.
         if (! $date) {
             return collect();
         }

@@ -20,18 +20,21 @@ class ReviewService
     {
         abort_if($booking->customer_id !== $customer->id, 404);
 
+        // Reviews are allowed only after the service outcome is complete.
         if ($booking->status !== Booking::STATUS_COMPLETED) {
             throw ValidationException::withMessages([
                 'booking_id' => ['Only completed bookings can be reviewed.'],
             ]);
         }
 
+        // Customer reviews require a final worker so ratings attach to the correct provider.
         if (! $booking->worker_id) {
             throw ValidationException::withMessages([
                 'booking_id' => ['This booking does not have a final worker.'],
             ]);
         }
 
+        // Customers can review a booking once to protect worker ratings from duplicates.
         if ($booking->review()->exists()) {
             throw ValidationException::withMessages([
                 'booking_id' => ['This booking has already been reviewed.'],
@@ -61,12 +64,14 @@ class ReviewService
     {
         abort_if($booking->worker_id !== $worker->id, 404);
 
+        // Workers can review customers only after the job has actually finished.
         if ($booking->status !== Booking::STATUS_COMPLETED) {
             throw ValidationException::withMessages([
                 'booking_id' => ['Only completed bookings can be reviewed.'],
             ]);
         }
 
+        // Workers get one customer review per booking to keep reputation data fair.
         if ($booking->workerReview()->exists()) {
             throw ValidationException::withMessages([
                 'booking_id' => ['You have already reviewed this customer for this booking.'],
@@ -93,6 +98,7 @@ class ReviewService
     {
         abort_unless($worker->hasRole('worker'), 404);
 
+        // Worker profile pages show only customer-to-worker reviews for that worker.
         return Review::query()
             ->with(['customer.role', 'booking.service'])
             ->where('worker_id', $worker->id)
@@ -115,6 +121,7 @@ class ReviewService
      */
     public function summaryForWorker(User $worker): array
     {
+        // Rating summaries are calculated from public customer feedback only.
         $summary = Review::query()
             ->where('worker_id', $worker->id)
             ->where('type', Review::TypeCustomerToWorker)

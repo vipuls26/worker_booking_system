@@ -30,6 +30,7 @@ class AuthController extends Controller
 
     public function register(RegisterRequest $request): JsonResponse
     {
+        // Registration returns a token immediately so new users can complete onboarding steps.
         $result = $this->authService->register($request->validated());
 
         return response()->json([
@@ -45,8 +46,10 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         try {
+            // Login creates a fresh API token for the authenticated session.
             $result = $this->authService->login($request->validated());
         } catch (ValidationException $exception) {
+            // Invalid login attempts return field errors without exposing account existence.
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid credentials',
@@ -68,6 +71,7 @@ class AuthController extends Controller
     {
         $status = Password::sendResetLink($request->validated());
 
+        // Password brokers can fail when the email is unknown or delivery cannot be started.
         if ($status !== Password::RESET_LINK_SENT) {
             return response()->json([
                 'success' => false,
@@ -97,10 +101,12 @@ class AuthController extends Controller
 
                 $user->tokens()->delete();
 
+                // Password changes revoke existing API tokens so old sessions cannot continue.
                 event(new PasswordReset($user));
             }
         );
 
+        // Failed resets return broker errors using the API validation format.
         if ($status !== Password::PASSWORD_RESET) {
             return response()->json([
                 'success' => false,
@@ -122,6 +128,7 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        // Logout only removes the current token so other devices can remain signed in.
         $request->user()?->currentAccessToken()?->delete();
 
         $this->audit->record('auth.logout', $user, $user);
@@ -137,6 +144,7 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        // Verified users do not need another email challenge.
         if ($user->hasVerifiedEmail()) {
             return response()->json([
                 'success' => true,
@@ -160,10 +168,12 @@ class AuthController extends Controller
 
     public function verifyEmail(Request $request, int $id, string $hash): JsonResponse|RedirectResponse
     {
+        // Signed email verification links are resolved by user ID and hash.
         $user = User::query()->findOrFail($id);
 
         abort_unless(hash_equals((string) $hash, sha1($user->getEmailForVerification())), 403);
 
+        // Marking email verified is idempotent so repeated link visits stay safe.
         if (! $user->hasVerifiedEmail() && $user->markEmailAsVerified()) {
             event(new Verified($user));
             $this->audit->record('auth.email_verified', $user, $user);
@@ -171,6 +181,7 @@ class AuthController extends Controller
 
         $user->load(['role', 'customerProfile', 'workerProfile', 'workerVerification']);
 
+        // API clients expect JSON, while browser link clicks should land on the frontend confirmation page.
         if ($request->expectsJson()) {
             return response()->json([
                 'success' => true,

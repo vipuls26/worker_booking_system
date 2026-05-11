@@ -16,6 +16,7 @@ class UnblockRequestManagementService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        // Admins need unblock requests with user and reviewer context for account safety decisions.
         return UnblockRequest::query()
             ->with(['user.role', 'reviewer.role'])
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
@@ -35,6 +36,7 @@ class UnblockRequestManagementService
 
     private function review(UnblockRequest $unblockRequest, User $admin, string $status, ?string $note): UnblockRequest
     {
+        // Each unblock request should receive exactly one admin decision.
         if ($unblockRequest->status !== UnblockRequest::STATUS_PENDING) {
             throw ValidationException::withMessages([
                 'request' => ['This unblock request has already been reviewed.'],
@@ -42,6 +44,7 @@ class UnblockRequestManagementService
         }
 
         return DB::transaction(function () use ($unblockRequest, $admin, $status, $note): UnblockRequest {
+            // Store the decision details so the user and audit log can explain the account outcome.
             $unblockRequest->update([
                 'status' => $status,
                 'admin_note' => $note,
@@ -49,6 +52,7 @@ class UnblockRequestManagementService
                 'reviewed_at' => now(),
             ]);
 
+            // An approved appeal restores account access immediately.
             if ($status === UnblockRequest::STATUS_APPROVED) {
                 $unblockRequest->user?->update(['is_blocked' => false]);
             }

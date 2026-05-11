@@ -18,6 +18,7 @@ class ServiceController extends Controller
 
     public function index(IndexServicesRequest $request): JsonResponse
     {
+        // Admin service lists support managing active and inactive marketplace categories.
         $services = $this->service->paginate($request);
 
         return response()->json([
@@ -32,6 +33,7 @@ class ServiceController extends Controller
 
     public function store(StoreServiceRequest $request): JsonResponse
     {
+        // Newly created service categories become available according to the submitted active flag.
         $service = $this->service->create($request->validated(), $request->user());
 
         return response()->json([
@@ -52,6 +54,7 @@ class ServiceController extends Controller
 
     public function update(UpdateServiceRequest $request, Service $service): JsonResponse
     {
+        // Updating a service may regenerate its slug when the business-facing name changes.
         $service = $this->service->update($service, $request->validated());
 
         return response()->json([
@@ -63,6 +66,7 @@ class ServiceController extends Controller
 
     public function destroy(Service $service): JsonResponse
     {
+        // Deleting a service removes it from marketplace management without returning stale payload data.
         $this->service->delete($service);
 
         return response()->json([
@@ -74,6 +78,7 @@ class ServiceController extends Controller
 
     public function toggleStatus(Service $service): JsonResponse
     {
+        // Service status toggles let admins quickly pause or resume customer booking categories.
         $service = $this->service->toggleStatus($service);
 
         return response()->json([

@@ -18,6 +18,7 @@ class UnblockRequestController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // Admin unblock queues show pending and reviewed appeals with reviewer context.
         $unblockRequests = $this->unblockRequests->paginate($request);
 
         return response()->json([
@@ -33,6 +34,7 @@ class UnblockRequestController extends Controller
     public function approve(ReviewUnblockRequestRequest $request, UnblockRequest $unblockRequest): JsonResponse
     {
         try {
+            // Approval restores the blocked user's access through the account review workflow.
             $unblockRequest = $this->unblockRequests->approve($unblockRequest, $request->user(), $request->string('admin_note')->toString() ?: null);
         } catch (ValidationException $exception) {
             return $this->validationError($exception);
@@ -50,6 +52,7 @@ class UnblockRequestController extends Controller
     public function reject(ReviewUnblockRequestRequest $request, UnblockRequest $unblockRequest): JsonResponse
     {
         try {
+            // Rejection records the admin decision while keeping the account blocked.
             $unblockRequest = $this->unblockRequests->reject($unblockRequest, $request->user(), $request->string('admin_note')->toString() ?: null);
         } catch (ValidationException $exception) {
             return $this->validationError($exception);
@@ -66,6 +69,7 @@ class UnblockRequestController extends Controller
 
     private function validationError(ValidationException $exception): JsonResponse
     {
+        // Reviewed or invalid unblock requests return validation details without changing response contracts.
         return response()->json([
             'success' => false,
             'message' => 'Unable to review unblock request',

@@ -217,6 +217,96 @@ class BookingAutoMatchingWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_pending_worker_does_not_receive_direct_booking_request(): void
+    {
+        Notification::fake();
+        $this->seed(RoleSeeder::class);
+
+        $customer = $this->customer();
+        $worker = $this->verifiedWorker([
+            'email_verified_at' => null,
+        ]);
+        $service = Service::factory()->create();
+        $bookingDate = now()->addDays(5)->toDateString();
+        $dayOfWeek = (int) now()->addDays(5)->dayOfWeek;
+
+        $this->attachServiceAndSchedule($worker, $service, $dayOfWeek);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/customer/bookings', [
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => $bookingDate,
+            'start_time' => '12:00',
+            'end_time' => '13:00',
+            'address' => '456 Service Street',
+            'issue_description' => 'AC service needed',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'No verified workers are available for this service at the selected date and time. Please choose another time or service.')
+            ->assertJsonValidationErrors('service_id');
+
+        $this->assertDatabaseMissing('service_request_workers', [
+            'worker_id' => $worker->id,
+        ]);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_pending_worker_cannot_access_booking_dashboard(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        Sanctum::actingAs($this->verifiedWorker([
+            'is_verified' => false,
+        ]));
+
+        $this->getJson('/api/worker/dashboard')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Account is waiting for platform verification');
+    }
+
+    public function test_customer_cannot_select_worker_after_platform_verification_becomes_pending(): void
+    {
+        Notification::fake();
+        $this->seed(RoleSeeder::class);
+
+        $customer = $this->customer();
+        $worker = $this->verifiedWorker();
+        $service = Service::factory()->create();
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => now()->addDays(6)->toDateString(),
+            'start_time' => '12:00',
+            'end_time' => '13:00',
+            'address' => '456 Service Street',
+            'description' => 'AC service needed',
+            'status' => ServiceRequest::STATUS_OPEN,
+        ]);
+        $serviceRequestWorker = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ]);
+
+        $worker->update(['is_verified' => false]);
+
+        Sanctum::actingAs($customer);
+
+        $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/select-worker", [
+            'booking_request_id' => $serviceRequestWorker->id,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_request_id');
+
+        $this->assertDatabaseMissing('bookings', [
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+        ]);
+    }
+
     private function customer(): User
     {
         return User::factory()

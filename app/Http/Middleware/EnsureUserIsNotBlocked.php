@@ -15,6 +15,7 @@ class EnsureUserIsNotBlocked
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Blocked accounts cannot continue booking or marketplace activity.
         if ($request->user()?->is_blocked) {
             return response()->json([
                 'success' => false,

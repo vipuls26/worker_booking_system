@@ -16,6 +16,7 @@ class UnblockRequestController extends Controller
 
     public function show(Request $request): JsonResponse
     {
+        // Users need their latest unblock appeal status while account access is restricted.
         $unblockRequest = $this->unblockRequests->latestFor($request->user());
 
         return response()->json([
@@ -30,8 +31,10 @@ class UnblockRequestController extends Controller
     public function store(StoreUnblockRequestRequest $request): JsonResponse
     {
         try {
+            // Blocked users submit one appeal for admin review.
             $unblockRequest = $this->unblockRequests->submit($request->user(), $request->validated());
         } catch (ValidationException $exception) {
+            // Business validation failures should keep the API response shape consistent for clients.
             return response()->json([
                 'success' => false,
                 'message' => 'Unable to submit unblock request',

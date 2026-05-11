@@ -53,9 +53,11 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (ValidationException $exception): JsonResponse {
+            $firstErrorMessage = collect($exception->errors())->flatten()->first() ?: 'Validation failed';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => $firstErrorMessage,
                 'errors' => $exception->errors(),
             ], $exception->status);
         });

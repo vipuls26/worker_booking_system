@@ -19,10 +19,12 @@ class BookingWorkflowService
         $oldStatus = $booking->status;
         $updates = ['status' => $nextStatus];
 
+        // Rejection reasons are stored on the booking so customers can understand denied work.
         if ($nextStatus === Booking::STATUS_REJECTED) {
             $updates['rejection_reason'] = $note;
         }
 
+        // Cancellation metadata identifies who ended the booking and why.
         if ($nextStatus === Booking::STATUS_CANCELLED) {
             $updates['cancelled_by'] = $actor?->id;
             $updates['cancelled_reason'] = $note;
@@ -55,6 +57,7 @@ class BookingWorkflowService
 
     public function assertCustomerCanCancel(Booking $booking): void
     {
+        // Customers can cancel only before work is rejected, completed, cancelled, or otherwise closed.
         if (! in_array($booking->status, [Booking::STATUS_REQUESTED, Booking::STATUS_PENDING, Booking::STATUS_CONFIRMED], true)) {
             throw ValidationException::withMessages([
                 'status' => ['Only requested, pending, or confirmed bookings can be cancelled by the customer.'],
@@ -75,6 +78,7 @@ class BookingWorkflowService
             Booking::STATUS_CANCELLED => [],
         ];
 
+        // Booking statuses must follow the platform workflow instead of jumping across states.
         if (! in_array($nextStatus, $allowed[$booking->status] ?? [], true)) {
             throw ValidationException::withMessages([
                 'status' => ['This booking cannot move to the selected status.'],

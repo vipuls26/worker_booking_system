@@ -25,6 +25,7 @@ class LogBookingStatusChanged implements ShouldQueueAfterCommit
             'reason' => $event->reason,
         ]);
 
+        // Customer cancellations notify the worker and then stop to avoid sending customer-facing copy.
         if ($event->newStatus === Booking::STATUS_CANCELLED && $event->actor?->id === $booking->customer_id) {
             $booking->worker?->notify(new BookingWorkflowNotification(
                 booking: $booking,
@@ -44,6 +45,7 @@ class LogBookingStatusChanged implements ShouldQueueAfterCommit
             Booking::STATUS_CANCELLED => ['booking_cancelled', 'Booking cancelled', 'Your booking has been cancelled.'],
         ];
 
+        // Statuses without customer-facing workflow messages should only be audited.
         if (! isset($messages[$event->newStatus])) {
             return;
         }

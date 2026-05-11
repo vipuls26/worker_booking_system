@@ -20,6 +20,7 @@ class DisputeService
      */
     public function paginateForAdmin(array $filters, int $perPage = 15): LengthAwarePaginator
     {
+        // Admins need a filtered dispute queue with all people and booking context needed for triage.
         return Dispute::query()
             ->with($this->relations())
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
@@ -38,6 +39,7 @@ class DisputeService
 
     public function paginateForUser(User $user, int $perPage = 10): LengthAwarePaginator
     {
+        // Customers and workers should only see disputes where they are one of the involved parties.
         return Dispute::query()
             ->with($this->relations())
             ->where(function ($query) use ($user): void {
@@ -53,12 +55,14 @@ class DisputeService
      */
     public function create(User $actor, array $data): Dispute
     {
+        // Disputes are opened against a specific booking so policy checks can confirm party access.
         $booking = Booking::query()
             ->with(['serviceRequest', 'customer.role', 'worker.role'])
             ->findOrFail($data['booking_id']);
 
         Gate::forUser($actor)->authorize('create', [Dispute::class, $booking]);
 
+        // A booking can have only one active dispute to keep resolution ownership clear.
         if ($booking->disputes()->whereNotIn('status', [Dispute::STATUS_RESOLVED, Dispute::STATUS_REJECTED])->exists()) {
             throw ValidationException::withMessages([
                 'booking_id' => ['This booking already has an active dispute.'],
@@ -98,6 +102,7 @@ class DisputeService
         return DB::transaction(function () use ($dispute, $admin, $status, $resolutionNote): Dispute {
             $oldStatus = $dispute->status;
 
+            // Resolution statuses close the dispute and capture the admin responsible for the decision.
             $dispute->update([
                 'status' => $status,
                 'assigned_admin_id' => $dispute->assigned_admin_id ?: $admin->id,

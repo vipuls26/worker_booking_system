@@ -35,6 +35,27 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Use descriptive names for variables and methods. For example, `isRegisteredForDiscounts`, not `discount()`.
 - Check for existing components to reuse before writing a new one.
 
+## Readable Maintenance Rules
+
+This home services booking platform is maintained by junior developers and interns, so optimize Laravel PHP code for explicit business readability.
+
+- Use descriptive variables such as `$workerList` and `$bookingDate`; never use abbreviations such as `$wl` or `$bd`.
+- Use descriptive method names such as `getAvailableWorkers()`; never use abbreviations such as `getAW()`.
+- Prefix boolean variables with clear intent, such as `$isWorkerVerified` or `$hasPendingBooking`.
+- Keep each method focused on one job. Split a method when it validates, mutates, and responds all at once.
+- Keep nesting to two levels or fewer by using early returns for failed business rules.
+- Keep methods to 25 lines or fewer. Extract private helpers when the method grows beyond that.
+- Add a PHPDoc block to every method explaining what it does and why the business needs it.
+- Add a short comment before each `if` or `else` explaining the business reason for the branch.
+- Add a short comment before each query explaining what data is being retrieved or changed.
+- Avoid ternary operators for business logic. Simple null fallback ternaries are acceptable.
+- Avoid chaining more than three method calls when it hurts readability; use named intermediate variables.
+- Avoid closures unless they are simple query constraints or simple callbacks.
+- Avoid magic numbers. Promote business values to named constants or named variables.
+- Prefer `if` / `else` over `match()` for business rules.
+- Prefer `foreach` over collection pipelines for complex loops.
+- Prefer named variables over inline expressions when the value has business meaning.
+
 ## Verification Scripts
 
 - Do not create verification scripts or tinker when tests cover that functionality and prove they work. Unit and feature tests are more important.

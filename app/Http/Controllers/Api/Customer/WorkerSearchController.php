@@ -18,6 +18,7 @@ class WorkerSearchController extends Controller
 
     public function index(WorkerSearchRequest $request): JsonResponse
     {
+        // Customer worker search returns only marketplace-ready workers.
         $workers = $this->workers->paginate($request);
 
         return response()->json([
@@ -32,6 +33,7 @@ class WorkerSearchController extends Controller
 
     public function show(User $worker, WorkerSearchRequest $request): JsonResponse
     {
+        // Worker detail pages include optional availability for the customer's selected date.
         $worker = $this->workers->findWorker($worker);
 
         return response()->json([
@@ -53,6 +55,7 @@ class WorkerSearchController extends Controller
 
     public function options(): JsonResponse
     {
+        // Search options expose only active service categories customers can book.
         return response()->json([
             'success' => true,
             'message' => 'Worker search options retrieved',

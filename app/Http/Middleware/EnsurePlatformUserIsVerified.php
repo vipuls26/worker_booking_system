@@ -17,6 +17,7 @@ class EnsurePlatformUserIsVerified
     {
         $user = $request->user()?->loadMissing(['role', 'workerProfile', 'workerVerification']);
 
+        // Platform verification applies only after authentication succeeds.
         if (! $user) {
             return response()->json([
                 'success' => false,
@@ -25,10 +26,12 @@ class EnsurePlatformUserIsVerified
             ], 401);
         }
 
+        // Admins bypass user verification gates because they operate the review workflow itself.
         if ($user->hasRole('admin')) {
             return $next($request);
         }
 
+        // Customers and workers need admin platform approval before using protected features.
         if (! $user->is_verified) {
             return response()->json([
                 'success' => false,
@@ -39,6 +42,7 @@ class EnsurePlatformUserIsVerified
             ], 403);
         }
 
+        // Worker marketplace actions require the worker profile to be approved too.
         if ($user->hasRole('worker') && ! $user->workerProfile?->is_verified) {
             return response()->json([
                 'success' => false,

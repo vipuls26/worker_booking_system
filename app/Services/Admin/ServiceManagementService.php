@@ -15,6 +15,7 @@ class ServiceManagementService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        // Service administration lists categories with creator context for auditability.
         $query = Service::query()
             ->with('creator:id,name,email,role_id')
             ->latest();
@@ -70,6 +71,7 @@ class ServiceManagementService
         $slug = $baseSlug;
         $counter = 2;
 
+        // Service slugs must remain unique even when a deleted category used the name before.
         while (Service::withTrashed()
             ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
             ->where('slug', $slug)

@@ -12,6 +12,7 @@ class NotificationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // Notification lists are scoped to the signed-in user.
         $notifications = $request->user()
             ->notifications()
             ->latest()
@@ -30,6 +31,7 @@ class NotificationController extends Controller
 
     public function unreadCount(Request $request): JsonResponse
     {
+        // The frontend can poll this lightweight count without loading the full notification list.
         return response()->json([
             'success' => true,
             'message' => 'Unread notifications count retrieved',
@@ -41,6 +43,7 @@ class NotificationController extends Controller
 
     public function markAsRead(Request $request, string $notification): JsonResponse
     {
+        // A notification can be marked read only by the user who owns it.
         $notification = $request->user()->notifications()->whereKey($notification)->firstOrFail();
         $notification->markAsRead();
 
@@ -56,6 +59,7 @@ class NotificationController extends Controller
 
     public function markAllAsRead(Request $request): JsonResponse
     {
+        // Marking all as read clears the user's notification badge in one request.
         $request->user()->unreadNotifications()->update(['read_at' => now()]);
 
         return response()->json([
@@ -69,6 +73,7 @@ class NotificationController extends Controller
 
     public function destroy(Request $request, string $notification): JsonResponse
     {
+        // Clearing a notification is scoped to the owner to avoid cross-account deletion.
         $notification = $request->user()->notifications()->whereKey($notification)->firstOrFail();
         $notification->delete();
 
@@ -83,6 +88,7 @@ class NotificationController extends Controller
 
     public function clearAll(Request $request): JsonResponse
     {
+        // Clear-all removes only the signed-in user's notification history.
         $request->user()->notifications()->delete();
 
         return response()->json([

@@ -20,6 +20,7 @@ class ReviewPolicy
 
     public function createForWorker(User $user, Booking $booking): bool
     {
+        // Customers review workers only after their own booking is completed.
         return $user->hasRole('customer')
             && $booking->customer_id === $user->id
             && $booking->status === Booking::STATUS_COMPLETED;
@@ -27,6 +28,7 @@ class ReviewPolicy
 
     public function createForCustomer(User $user, Booking $booking): bool
     {
+        // Workers review customers only after completing their assigned booking.
         return $user->hasRole('worker')
             && $booking->worker_id === $user->id
             && $booking->status === Booking::STATUS_COMPLETED;

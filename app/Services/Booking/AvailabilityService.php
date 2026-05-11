@@ -22,6 +22,7 @@ class AvailabilityService
 
     public function hasOverlappingBooking(User $worker, string $date, string $startTime, string $endTime, ?int $ignoreBookingId = null, ?int $ignoreServiceRequestId = null): bool
     {
+        // Active bookings and accepted requests block the worker from taking an overlapping slot.
         return Booking::query()
             ->where('worker_id', $worker->id)
             ->when($ignoreBookingId, fn ($query) => $query->whereKeyNot($ignoreBookingId))
@@ -34,6 +35,7 @@ class AvailabilityService
 
     private function hasAcceptedRequestOverlap(User $worker, string $date, string $startTime, string $endTime, ?int $ignoreServiceRequestId = null): bool
     {
+        // Accepted open service requests reserve the worker until customer selection is resolved.
         return ServiceRequestWorker::query()
             ->where('worker_id', $worker->id)
             ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
@@ -46,6 +48,7 @@ class AvailabilityService
             ->with('serviceRequest:id,requested_date,start_time,end_time')
             ->get()
             ->contains(function (ServiceRequestWorker $serviceRequestWorker) use ($date, $startTime, $endTime): bool {
+                // Stale worker request rows should not block future availability.
                 if ($serviceRequestWorker->serviceRequest === null) {
                     return false;
                 }
@@ -74,6 +77,7 @@ class AvailabilityService
 
     private function scheduleAllows(User $worker, CarbonImmutable $date, CarbonImmutable $start, CarbonImmutable $end): bool
     {
+        // Schedule checks make sure the full requested window fits inside published worker hours.
         return $worker->workerSchedules()
             ->where('day_of_week', (int) $date->dayOfWeek)
             ->where('is_off_day', false)

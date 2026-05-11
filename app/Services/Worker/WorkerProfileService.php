@@ -13,6 +13,7 @@ class WorkerProfileService
 {
     public function getOrCreate(User $worker): WorkerProfile
     {
+        // Workers need a profile record before editing marketplace-facing details.
         return $worker->workerProfile()
             ->firstOrCreate(['user_id' => $worker->id], [
                 'experience_years' => 0,
@@ -30,13 +31,16 @@ class WorkerProfileService
         return DB::transaction(function () use ($worker, $data): WorkerProfile {
             $profile = $this->getOrCreate($worker);
 
+            // Uploading a new profile photo replaces the old marketplace image.
             if (($data['profile_photo'] ?? null) instanceof UploadedFile) {
+                // Remove stale storage so workers do not accumulate unused profile photos.
                 if ($profile->profile_photo) {
                     Storage::disk('public')->delete($profile->profile_photo);
                 }
 
                 $data['profile_photo'] = $data['profile_photo']->store("worker-profiles/{$worker->id}", 'public');
             } else {
+                // Missing photo input means keep the existing image unchanged.
                 unset($data['profile_photo']);
             }
 

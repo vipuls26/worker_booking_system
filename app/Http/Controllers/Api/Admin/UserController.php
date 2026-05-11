@@ -17,6 +17,7 @@ class UserController extends Controller
 
     public function index(IndexUsersRequest $request): JsonResponse
     {
+        // Admin user lists exclude protected admin accounts inside the service layer.
         $users = $this->users->paginate($request);
 
         return response()->json([
@@ -41,6 +42,7 @@ class UserController extends Controller
     public function block(User $user): JsonResponse
     {
         try {
+            // Blocking removes a user's platform access and may reset worker booking eligibility.
             $user = $this->users->block($user);
         } catch (ValidationException $exception) {
             return $this->validationError('Unable to block user', $exception);
@@ -56,6 +58,7 @@ class UserController extends Controller
     public function unblock(User $user): JsonResponse
     {
         try {
+            // Manual unblocking restores account access outside the appeal workflow.
             $user = $this->users->unblock($user);
         } catch (ValidationException $exception) {
             return $this->validationError('Unable to unblock user', $exception);
@@ -71,6 +74,7 @@ class UserController extends Controller
     public function verify(User $user): JsonResponse
     {
         try {
+            // Admin verification enables approved users to access protected platform features.
             $user = $this->users->verify($user);
         } catch (ValidationException $exception) {
             return $this->validationError('Unable to verify user', $exception);
@@ -86,6 +90,7 @@ class UserController extends Controller
     public function destroy(User $user): JsonResponse
     {
         try {
+            // User deletion is guarded so admins cannot delete protected operator accounts.
             $this->users->delete($user, request()->user());
         } catch (ValidationException $exception) {
             return $this->validationError('Unable to delete user', $exception);
@@ -100,6 +105,7 @@ class UserController extends Controller
 
     private function validationError(string $message, ValidationException $exception): JsonResponse
     {
+        // User management business rule failures return field-level errors for the admin UI.
         return response()->json([
             'success' => false,
             'message' => $message,

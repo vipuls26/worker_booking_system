@@ -24,6 +24,7 @@ class WorkerServicePolicy
 
     public function create(User $user): bool
     {
+        // Workers must be verified and active before offering services in the marketplace.
         return $user->hasRole('worker') && $user->hasVerifiedEmail() && ! $user->is_blocked && $user->is_verified;
     }
 

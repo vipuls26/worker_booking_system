@@ -12,6 +12,7 @@ class WorkerVerificationService
 {
     public function get(User $worker): ?WorkerVerification
     {
+        // Workers need their latest verification record and reviewer context for resubmission guidance.
         return WorkerVerification::query()
             ->where('user_id', $worker->id)
             ->with(['user.role', 'verifier.role'])
@@ -24,8 +25,10 @@ class WorkerVerificationService
     public function submit(User $worker, array $data): WorkerVerification
     {
         return DB::transaction(function () use ($worker, $data): WorkerVerification {
+            // Resubmissions reuse the worker's verification record so admins keep one review history.
             $verification = WorkerVerification::query()->firstOrNew(['user_id' => $worker->id]);
 
+            // Replacing ID proof should remove the old private document from storage.
             if (($data['id_proof'] ?? null) instanceof UploadedFile && $verification->exists && $verification->id_proof) {
                 Storage::disk('public')->delete($verification->id_proof);
             }
@@ -34,6 +37,7 @@ class WorkerVerificationService
                 ->filter(fn (mixed $certificate): bool => $certificate instanceof UploadedFile)
                 ->values();
 
+            // New certificate uploads replace the previous certificate set for the admin review.
             if ($certificateFiles->isNotEmpty()) {
                 collect($verification->certificates ?? [])
                     ->filter()
@@ -59,6 +63,7 @@ class WorkerVerificationService
                 'verified_at' => null,
             ])->save();
 
+            // Any new submission resets booking eligibility until an admin approves the worker again.
             $worker->workerProfile()->updateOrCreate(['user_id' => $worker->id], [
                 'experience_years' => $data['experience_years'],
                 'is_verified' => false,

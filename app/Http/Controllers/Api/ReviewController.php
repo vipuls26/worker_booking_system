@@ -20,6 +20,7 @@ class ReviewController extends Controller
 
     public function store(StoreReviewRequest $request, Booking $booking): JsonResponse
     {
+        // Customers can review workers only when policy confirms the completed booking belongs to them.
         Gate::authorize('createForWorker', [Review::class, $booking]);
 
         return response()->json([
@@ -33,6 +34,7 @@ class ReviewController extends Controller
 
     public function storeForCustomer(StoreReviewRequest $request, Booking $booking): JsonResponse
     {
+        // Workers can submit customer feedback only for completed bookings assigned to them.
         Gate::authorize('createForCustomer', [Review::class, $booking]);
 
         return response()->json([
@@ -46,6 +48,7 @@ class ReviewController extends Controller
 
     public function workerReviews(ReviewIndexRequest $request, User $worker): JsonResponse
     {
+        // Public worker review pages include both paginated reviews and rating summary.
         $reviews = $this->reviews->workerReviews($worker, $request);
 
         return response()->json([
@@ -61,6 +64,7 @@ class ReviewController extends Controller
 
     public function myWorkerReviews(ReviewIndexRequest $request): JsonResponse
     {
+        // Workers can view the same reputation data for their own profile.
         $reviews = $this->reviews->workerReviews($request->user(), $request);
 
         return response()->json([

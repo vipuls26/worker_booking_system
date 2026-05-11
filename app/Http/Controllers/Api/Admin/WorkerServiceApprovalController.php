@@ -17,6 +17,7 @@ class WorkerServiceApprovalController extends Controller
 
     public function index(IndexWorkerServiceApprovalsRequest $request): JsonResponse
     {
+        // Admins review pending and processed worker service offerings from this queue.
         $workerServices = $this->workerServiceApprovals->paginate($request);
 
         return response()->json([
@@ -31,6 +32,7 @@ class WorkerServiceApprovalController extends Controller
 
     public function approve(WorkerService $workerService): JsonResponse
     {
+        // Approval publishes the worker's service for customer booking.
         $workerService = $this->workerServiceApprovals->approve($workerService, request()->user());
 
         return response()->json([
@@ -44,6 +46,7 @@ class WorkerServiceApprovalController extends Controller
 
     public function reject(RejectWorkerServiceApprovalRequest $request, WorkerService $workerService): JsonResponse
     {
+        // Rejection keeps the offering hidden and returns the admin reason to the worker.
         $workerService = $this->workerServiceApprovals->reject(
             $workerService,
             $request->user(),

@@ -18,6 +18,7 @@ class DashboardController extends Controller
 
     public function worker(Request $request): JsonResponse
     {
+        // Worker dashboards include both identity context and business analytics.
         return response()->json([
             'success' => true,
             'message' => 'Worker dashboard',
@@ -39,6 +40,7 @@ class DashboardController extends Controller
 
     private function dashboardResponse(Request $request, string $message): JsonResponse
     {
+        // Lightweight dashboards return the signed-in user's role context for the frontend shell.
         return response()->json([
             'success' => true,
             'message' => $message,

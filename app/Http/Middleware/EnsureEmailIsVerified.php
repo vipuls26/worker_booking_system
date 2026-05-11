@@ -18,6 +18,7 @@ class EnsureEmailIsVerified
     {
         $user = $request->user();
 
+        // Protected API routes require an authenticated user before email checks apply.
         if (! $user) {
             return response()->json([
                 'success' => false,
@@ -26,6 +27,7 @@ class EnsureEmailIsVerified
             ], 401);
         }
 
+        // Email verification is required before users can access booking-sensitive features.
         if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
             return response()->json([
                 'success' => false,

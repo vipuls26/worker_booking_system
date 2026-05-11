@@ -13,6 +13,7 @@ class WorkerServiceManagementService
 {
     public function paginate(User $worker, Request $request): LengthAwarePaginator
     {
+        // Workers manage only their own service offerings and review outcomes.
         return $worker->workerServices()
             ->with(['service:id,name,slug,icon,is_active', 'reviewer:id,name'])
             ->when($request->filled('search'), function ($query) use ($request): void {
@@ -37,6 +38,7 @@ class WorkerServiceManagementService
 
     public function activeServiceOptions(): Collection
     {
+        // Workers can create offerings only for active platform service categories.
         return Service::query()
             ->select(['id', 'name', 'slug', 'icon'])
             ->where('is_active', true)
@@ -49,6 +51,7 @@ class WorkerServiceManagementService
      */
     public function create(User $worker, array $data): WorkerService
     {
+        // New worker services require admin approval before customers can book them.
         $data['approval_status'] = WorkerService::StatusPending;
         $data['is_active'] = false;
         $data['rejection_reason'] = null;
@@ -65,6 +68,7 @@ class WorkerServiceManagementService
      */
     public function update(WorkerService $workerService, array $data): WorkerService
     {
+        // Edited worker services return to pending review because pricing or scope may have changed.
         $data['approval_status'] = WorkerService::StatusPending;
         $data['is_active'] = false;
         $data['rejection_reason'] = null;

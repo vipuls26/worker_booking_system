@@ -18,16 +18,19 @@ class ProfileService
 
             $user->fill(Arr::only($data, ['name', 'email', 'phone']));
 
+            // Changing email requires re-verification before sensitive account workflows continue.
             if ($emailChanged) {
                 $user->email_verified_at = null;
             }
 
             $user->save();
 
+            // Send the new verification challenge immediately after the email update is saved.
             if ($emailChanged) {
                 $user->sendEmailVerificationNotification();
             }
 
+            // Customer addresses are stored on the customer profile for booking defaults.
             if ($user->hasRole('customer')) {
                 $user->customerProfile()->updateOrCreate(
                     ['user_id' => $user->id],

@@ -15,6 +15,7 @@ class AuditLogController extends Controller
 {
     public function __invoke(IndexAuditLogsRequest $request): JsonResponse
     {
+        // Admin audit history starts from a shared filtered query so all audit views behave consistently.
         $auditLogs = $this->baseQuery($request)
             ->latest()
             ->paginate($request->integer('per_page', 15));
@@ -24,6 +25,7 @@ class AuditLogController extends Controller
 
     public function user(IndexAuditLogsRequest $request, User $user): JsonResponse
     {
+        // User audit history includes actions performed by the user and actions performed against them.
         $auditLogs = $this->baseQuery($request)
             ->where(function ($query) use ($user): void {
                 $query->where('actor_id', $user->id)
@@ -40,6 +42,7 @@ class AuditLogController extends Controller
 
     public function booking(IndexAuditLogsRequest $request, Booking $booking): JsonResponse
     {
+        // Booking audit history includes direct booking changes and related metadata references.
         $auditLogs = $this->baseQuery($request)
             ->where(function ($query) use ($booking): void {
                 $query->where(function ($query) use ($booking): void {
@@ -55,6 +58,7 @@ class AuditLogController extends Controller
 
     private function baseQuery(IndexAuditLogsRequest $request)
     {
+        // Audit filters help admins investigate actions by text, actor role, action name, and date range.
         return AuditLog::query()
             ->with('actor.role')
             ->when($request->string('search')->toString(), function ($query, string $search): void {

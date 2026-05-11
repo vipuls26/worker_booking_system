@@ -56,6 +56,7 @@ class DashboardAnalyticsService
     {
         $monthExpression = $this->monthExpression('paid_at');
 
+        // Monthly revenue charts use paid platform commission only.
         return Payment::query()
             ->selectRaw($monthExpression.' as label')
             ->selectRaw('SUM(platform_commission) as value')
@@ -76,6 +77,7 @@ class DashboardAnalyticsService
      */
     private function revenueByStatus(): Collection
     {
+        // Revenue by status helps admins spot unsettled or failed payment buckets.
         return Payment::query()
             ->select('status as label')
             ->selectRaw('SUM(platform_commission) as value')
@@ -113,6 +115,7 @@ class DashboardAnalyticsService
 
     private function paidCommissionSince(CarbonImmutable $startDate): float
     {
+        // Period cards show paid commission earned since the selected start date.
         return round((float) Payment::query()
             ->where('status', Payment::STATUS_PAID)
             ->where('paid_at', '>=', $startDate)
@@ -124,6 +127,7 @@ class DashboardAnalyticsService
      */
     private function bookingStatuses(): Collection
     {
+        // Booking status counts give admins a quick operational workflow snapshot.
         return Booking::query()
             ->select('status as label')
             ->selectRaw('COUNT(*) as value')
@@ -141,6 +145,7 @@ class DashboardAnalyticsService
      */
     private function popularServices(): Collection
     {
+        // Popular services are ranked by booking volume first.
         $bookingStats = Booking::query()
             ->select('service_id')
             ->selectRaw('COUNT(*) as bookings_count')
@@ -150,6 +155,7 @@ class DashboardAnalyticsService
             ->get()
             ->keyBy('service_id');
 
+        // Revenue is calculated separately so service ranking remains based on demand.
         $revenueStats = Payment::query()
             ->join('bookings', 'bookings.id', '=', 'payments.booking_id')
             ->select('bookings.service_id')
@@ -160,6 +166,7 @@ class DashboardAnalyticsService
             ->get()
             ->keyBy('service_id');
 
+        // Fetch the service records after aggregate IDs are known for resource formatting.
         return Service::query()
             ->whereIn('id', $bookingStats->keys())
             ->get()

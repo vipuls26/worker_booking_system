@@ -45,7 +45,7 @@ class BookingController extends Controller
 
     public function store(StoreBookingRequest $request): JsonResponse
     {
-        // Customers must pass service request policy checks before workers are contacted.
+        // Customers must pass policy and schedule validation before workers are contacted.
         Gate::authorize('create', ServiceRequest::class);
 
         return response()->json([

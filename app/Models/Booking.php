@@ -34,6 +34,8 @@ class Booking extends Model
 
     public const PAYMENT_PAID = 'paid';
 
+    public const PAYMENT_REFUND_REVIEW = 'refund_review';
+
     public const PAYMENT_REFUNDED = 'refunded';
 
     public const DefaultCommissionRate = 10.00;
@@ -41,6 +43,12 @@ class Booking extends Model
     public const ActiveStatuses = [
         self::STATUS_PENDING,
         self::STATUS_REQUESTED,
+        self::STATUS_ACCEPTED,
+        self::STATUS_CONFIRMED,
+        self::STATUS_IN_PROGRESS,
+    ];
+
+    public const BookingOverlapStatuses = [
         self::STATUS_ACCEPTED,
         self::STATUS_CONFIRMED,
         self::STATUS_IN_PROGRESS,

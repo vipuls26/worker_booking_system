@@ -22,12 +22,12 @@ class AvailabilityService
 
     public function hasOverlappingBooking(User $worker, string $date, string $startTime, string $endTime, ?int $ignoreBookingId = null, ?int $ignoreServiceRequestId = null): bool
     {
-        // Active bookings and accepted requests block the worker from taking an overlapping slot.
+        // Accepted, confirmed, and in-progress bookings block the worker from taking an overlapping slot.
         return Booking::query()
             ->where('worker_id', $worker->id)
             ->when($ignoreBookingId, fn ($query) => $query->whereKeyNot($ignoreBookingId))
             ->whereDate('booking_date', $date)
-            ->whereIn('status', Booking::ActiveStatuses)
+            ->whereIn('status', Booking::BookingOverlapStatuses)
             ->get(['id', 'booking_time', 'start_time', 'end_time'])
             ->contains(fn (Booking $booking): bool => $this->overlaps($booking, $date, $startTime, $endTime))
             || $this->hasAcceptedRequestOverlap($worker, $date, $startTime, $endTime, $ignoreServiceRequestId);

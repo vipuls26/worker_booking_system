@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\Booking;
 use App\Models\Role;
+use App\Models\Service;
 use App\Models\User;
 use App\Models\WorkerProfile;
 use App\Models\WorkerVerification;
+use App\Notifications\BookingWorkflowNotification;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -52,6 +56,113 @@ class WorkerVerificationTest extends TestCase
             ->assertJsonPath('data.verifications.1.id', $olderPending->id)
             ->assertJsonPath('data.verifications.2.id', $newestProcessed->id)
             ->assertJsonPath('data.verifications.3.id', $approved->id);
+    }
+
+    /**
+     * Proves admins are warned when removing verification from a worker who still has active bookings.
+     */
+    public function test_admin_verification_list_shows_active_booking_count(): void
+    {
+        [$admin, $worker, $customer, $service] = $this->verifiedBookingActors();
+        $verification = $this->approvedVerificationForWorker($worker);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_ACCEPTED,
+        ]);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/worker-verifications?status='.WorkerVerification::STATUS_APPROVED)
+            ->assertOk()
+            ->assertJsonPath('data.verifications.0.id', $verification->id)
+            ->assertJsonPath('data.verifications.0.active_worker_bookings_count', 1);
+    }
+
+    /**
+     * Proves removing worker verification blocks new marketplace use but keeps current bookings active.
+     */
+    public function test_removing_worker_verification_keeps_active_bookings_and_notifies_customers(): void
+    {
+        Notification::fake();
+
+        [$admin, $worker, $customer, $service] = $this->verifiedBookingActors();
+        $verification = $this->approvedVerificationForWorker($worker);
+
+        $activeBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_ACCEPTED,
+        ]);
+
+        $completedBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/worker-verifications/{$verification->id}/reject", [
+            'rejection_reason' => 'Updated ID proof failed review.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.verification.status', WorkerVerification::STATUS_REJECTED)
+            ->assertJsonPath('data.verification.active_worker_bookings_count', 1);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $worker->id,
+            'is_verified' => false,
+        ]);
+
+        $this->assertDatabaseHas('worker_profiles', [
+            'user_id' => $worker->id,
+            'is_verified' => false,
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $activeBooking->id,
+            'status' => Booking::STATUS_ACCEPTED,
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $completedBooking->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        $this->assertDatabaseHas('booking_activities', [
+            'booking_id' => $activeBooking->id,
+            'actor_id' => $admin->id,
+            'from_status' => Booking::STATUS_ACCEPTED,
+            'to_status' => Booking::STATUS_ACCEPTED,
+            'event' => 'worker_verification_removed',
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'admin.worker_verification_rejected',
+            'subject_type' => (new WorkerVerification)->getMorphClass(),
+            'subject_id' => $verification->id,
+        ]);
+
+        Notification::assertSentTo(
+            $customer,
+            BookingWorkflowNotification::class,
+            function (BookingWorkflowNotification $notification) use ($customer): bool {
+                return $notification->toArray($customer)['event'] === 'worker_verification_removed';
+            }
+        );
     }
 
     /**
@@ -179,6 +290,53 @@ class WorkerVerificationTest extends TestCase
         return User::factory()
             ->for(Role::where('slug', 'admin')->firstOrFail())
             ->create();
+    }
+
+    /**
+     * Create verified booking actors for admin verification removal tests.
+     *
+     * @return array{User, User, User, Service}
+     */
+    private function verifiedBookingActors(): array
+    {
+        $this->seed(RoleSeeder::class);
+
+        $admin = User::factory()
+            ->for(Role::where('slug', 'admin')->firstOrFail())
+            ->create();
+
+        $worker = User::factory()
+            ->for(Role::where('slug', 'worker')->firstOrFail())
+            ->create(['is_verified' => true]);
+
+        WorkerProfile::factory()->create([
+            'user_id' => $worker->id,
+            'is_verified' => true,
+        ]);
+
+        $customer = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create();
+
+        $service = Service::factory()->create(['is_active' => true]);
+
+        return [$admin, $worker, $customer, $service];
+    }
+
+    /**
+     * Create an approved verification record for a worker who previously passed admin review.
+     */
+    private function approvedVerificationForWorker(User $worker): WorkerVerification
+    {
+        return WorkerVerification::create([
+            'user_id' => $worker->id,
+            'id_proof' => 'worker-verifications/'.$worker->id.'/id-proof.pdf',
+            'certificates' => [],
+            'experience_years' => 5,
+            'mobile_verified' => true,
+            'status' => WorkerVerification::STATUS_APPROVED,
+            'verified_at' => now(),
+        ]);
     }
 
     /**

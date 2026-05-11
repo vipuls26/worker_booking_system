@@ -12,6 +12,7 @@ use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
 use App\Models\WorkerService;
+use App\Services\Booking\AvailabilityService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -73,7 +74,7 @@ class BookingSystemTest extends TestCase
             'booking_time' => '10:00',
             'start_time' => '10:00',
             'end_time' => '11:00',
-            'status' => Booking::STATUS_ACCEPTED,
+            'status' => Booking::STATUS_CONFIRMED,
         ]);
 
         Sanctum::actingAs($customer);
@@ -88,7 +89,42 @@ class BookingSystemTest extends TestCase
             'issue_description' => 'Need help.',
         ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('start_time');
+            ->assertJsonValidationErrors('start_time')
+            ->assertJsonPath('errors.start_time.0', 'This worker already has a booking that overlaps the selected time.');
+    }
+
+    public function test_service_layer_rejects_in_progress_booking_overlap(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'booking_time' => '14:00',
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'status' => Booking::STATUS_IN_PROGRESS,
+        ]);
+
+        $hasOverlap = app(AvailabilityService::class)->hasOverlappingBooking(
+            worker: $worker,
+            date: '2026-05-11',
+            startTime: '15:00',
+            endTime: '17:00',
+        );
+
+        $this->assertTrue($hasOverlap);
+
+        $hasBackToBackOverlap = app(AvailabilityService::class)->hasOverlappingBooking(
+            worker: $worker,
+            date: '2026-05-11',
+            startTime: '16:00',
+            endTime: '17:00',
+        );
+
+        $this->assertFalse($hasBackToBackOverlap);
     }
 
     public function test_worker_can_move_booking_through_status_workflow(): void

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -26,6 +26,23 @@ const roleOptions = [
 const chipBase = 'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0.5';
 const neutralChip = `${chipBase} bg-blue-50 text-blue-700 shadow-[0_2px_0_#bfdbfe,0_6px_12px_rgba(37,99,235,0.12)] hover:bg-blue-100 active:shadow-[0_1px_0_#bfdbfe,0_4px_8px_rgba(37,99,235,0.12)] dark:bg-blue-500/10 dark:text-blue-300 dark:shadow-[0_2px_0_rgba(59,130,246,0.18)]`;
 const dangerChip = `${chipBase} bg-red-50 text-red-700 shadow-[0_2px_0_#fecaca,0_6px_12px_rgba(220,38,38,0.12)] hover:bg-red-100 active:shadow-[0_1px_0_#fecaca,0_4px_8px_rgba(220,38,38,0.12)] dark:bg-red-500/10 dark:text-red-300 dark:shadow-[0_2px_0_rgba(248,113,113,0.18)]`;
+const blockDialogMessage = computed(() => {
+    if (!blocking.value) {
+        return '';
+    }
+
+    if (blocking.value.is_blocked) {
+        return `Allow ${blocking.value.name || 'this user'} to access platform features again?`;
+    }
+
+    const activeBookingsCount = blocking.value.active_worker_bookings_count || 0;
+
+    if (activeBookingsCount > 0) {
+        return `Block ${blocking.value.name || 'this worker'} from protected platform features? This worker has ${activeBookingsCount} active booking${activeBookingsCount === 1 ? '' : 's'}. Blocking will cancel those bookings, notify customers, and send paid bookings for refund review. Email verification and admin approval will both reset.`;
+    }
+
+    return `Block ${blocking.value.name || 'this user'} from protected platform features? Email verification and admin approval will both reset. After unblock, they must verify email and wait for admin approval again.`;
+});
 
 async function load(page = 1) {
     loading.value = true;
@@ -151,9 +168,7 @@ onMounted(load);
         <ConfirmDialog
             :open="Boolean(blocking)"
             :title="blocking?.is_blocked ? 'Unblock user' : 'Block user'"
-            :message="blocking?.is_blocked
-                ? `Allow ${blocking?.name || 'this user'} to access platform features again?`
-                : `Block ${blocking?.name || 'this user'} from protected platform features? Email verification and admin approval will both reset. After unblock, they must verify email and wait for admin approval again.`"
+            :message="blockDialogMessage"
             @cancel="blocking = null"
             @confirm="confirmBlockToggle"
         />

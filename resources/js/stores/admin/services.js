@@ -64,8 +64,8 @@ export const useAdminServicesStore = defineStore('adminServices', {
             return response.data;
         },
 
-        async delete(id) {
-            const response = await serviceApi.deleteService(id);
+        async delete(id, force = false) {
+            const response = await serviceApi.deleteService(id, force);
 
             return response.data;
         },

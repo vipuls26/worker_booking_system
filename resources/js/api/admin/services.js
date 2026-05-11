@@ -20,6 +20,8 @@ export function toggleServiceStatus(id) {
     return http.patch(`/admin/services/${id}/toggle-status`);
 }
 
-export function deleteService(id) {
-    return http.delete(`/admin/services/${id}`);
+export function deleteService(id, force = false) {
+    return http.delete(`/admin/services/${id}`, {
+        params: force ? { force: true } : {},
+    });
 }

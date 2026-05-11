@@ -46,6 +46,18 @@ class PaymentService
     {
         abort_if($booking->customer_id !== $customer->id, 404);
 
+        return $this->processPayment($booking, $customer, $data);
+    }
+
+    /**
+     * Process payment using the commission values locked on the booking.
+     *
+     * @param  array{provider?: string|null, transaction_reference?: string|null}  $data
+     */
+    public function processPayment(Booking $booking, User $customer, array $data = []): Payment
+    {
+        abort_if($booking->customer_id !== $customer->id, 404);
+
         return DB::transaction(function () use ($booking, $customer, $data): Payment {
             // Lock the booking so concurrent checkout attempts cannot create duplicate payments.
             $booking = Booking::query()
@@ -72,7 +84,7 @@ class PaymentService
                 'customer_id' => $booking->customer_id,
                 'worker_id' => $booking->worker_id,
                 'amount' => $booking->quoted_amount,
-                'commission_rate' => $booking->quoted_commission_rate ?: Booking::DefaultCommissionRate,
+                'commission_rate' => $booking->quoted_commission_rate,
                 'platform_commission' => $booking->quoted_platform_commission,
                 'worker_earning' => $booking->quoted_worker_earning,
                 'provider' => $data['provider'] ?? 'manual',
@@ -82,6 +94,8 @@ class PaymentService
                 'metadata' => [
                     'source' => 'customer_checkout',
                     'booking_status' => $booking->status,
+                    'quoted_commission_rate' => $booking->quoted_commission_rate,
+                    'current_commission_rate' => $this->currentCommissionRate(),
                 ],
             ]);
 
@@ -93,9 +107,12 @@ class PaymentService
             $this->audit->record('payment.paid', $customer, $payment, [
                 'booking_id' => $booking->id,
                 'amount' => $payment->amount,
+                'commission_rate' => $payment->commission_rate,
                 'platform_commission' => $payment->platform_commission,
                 'worker_earning' => $payment->worker_earning,
             ]);
+
+            $this->auditCommissionRateDifference($booking, $payment, $customer);
 
             return $payment->refresh()->load(['booking.service', 'customer.role', 'worker.role']);
         });
@@ -160,5 +177,42 @@ class PaymentService
             ->latest()
             ->limit(10)
             ->get();
+    }
+
+    /**
+     * Return the current platform commission rate for drift auditing.
+     *
+     * This value is intentionally not used to calculate payment amounts for existing bookings.
+     */
+    private function currentCommissionRate(): float
+    {
+        return Booking::DefaultCommissionRate;
+    }
+
+    /**
+     * Record when the current global commission rate differs from the booking's locked rate.
+     *
+     * The audit trail explains why checkout honored the original booking quote.
+     */
+    private function auditCommissionRateDifference(Booking $booking, Payment $payment, User $customer): void
+    {
+        $quotedCommissionRate = (float) $booking->quoted_commission_rate;
+        $currentCommissionRate = $this->currentCommissionRate();
+
+        // A rate drift audit explains why payment used the booking quote instead of today's platform rate.
+        if (round($quotedCommissionRate, 2) === round($currentCommissionRate, 2)) {
+            return;
+        }
+
+        $this->audit->record('payment.commission_rate_changed', $customer, $payment, [
+            'booking_id' => $booking->id,
+            'payment_id' => $payment->id,
+            'quoted_commission_rate' => $quotedCommissionRate,
+            'current_commission_rate' => $currentCommissionRate,
+            'rate_difference' => round($currentCommissionRate - $quotedCommissionRate, 2),
+            'payment_commission_rate' => $payment->commission_rate,
+            'platform_commission' => $payment->platform_commission,
+            'worker_earning' => $payment->worker_earning,
+        ]);
     }
 }

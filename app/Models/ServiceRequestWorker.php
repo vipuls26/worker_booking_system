@@ -19,6 +19,8 @@ class ServiceRequestWorker extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    public const STATUS_EXPIRED = 'expired';
+
     public const STATUS_SELECTED = 'selected';
 
     public const STATUS_NOT_SELECTED = 'not_selected';

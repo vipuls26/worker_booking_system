@@ -64,6 +64,7 @@ const selectedSlotLabel = computed(() => {
 
     return `${form.start_time} - ${form.end_time}`;
 });
+const bookingError = computed(() => firstError(['start_time', 'end_time', 'service_id', 'worker_id', 'booking_date', 'address']));
 const slotGroups = computed(() => {
     const groups = [
         { key: 'morning', title: 'Morning', icon: 'pi-sun', slots: [] },
@@ -103,8 +104,27 @@ async function submitBooking() {
         await router.push(`/customer/bookings/${response.data.booking.id}`);
     } catch (error) {
         setApiError(error);
-        toast.error(error.response?.data?.message || 'Unable to create booking');
+        toast.error(firstErrorFromResponse(error) || error.response?.data?.message || 'Unable to create booking');
     }
+}
+
+function firstError(fields) {
+    for (const field of fields) {
+        const fieldErrors = errors.value[field];
+
+        if (Array.isArray(fieldErrors) && fieldErrors.length) {
+            return fieldErrors[0];
+        }
+    }
+
+    return '';
+}
+
+function firstErrorFromResponse(error) {
+    const responseErrors = error.response?.data?.errors || {};
+    const firstField = Object.keys(responseErrors)[0];
+
+    return firstField && Array.isArray(responseErrors[firstField]) ? responseErrors[firstField][0] : '';
 }
 
 function useSavedAddress() {
@@ -355,7 +375,9 @@ watch(
                             </div>
                         </div>
                     </div>
-                    <p v-if="!workersStore.availabilityLoading && workersStore.availability.length === 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">No slots available for this date and service duration.</p>
+                    <p v-if="!workersStore.availabilityLoading && workersStore.availability.length === 0" class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                        This worker is not scheduled for the selected date or duration.
+                    </p>
                     <p v-else-if="!workersStore.availabilityLoading" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                         {{ availableSlots.length }} available · {{ blockedSlots.length }} booked/reserved
                     </p>
@@ -418,6 +440,9 @@ watch(
                     <p v-if="errors.start_time?.length" class="mt-2 text-sm text-red-600 dark:text-red-300">{{ errors.start_time[0] }}</p>
                     <p v-if="errors.end_time?.length" class="mt-2 text-sm text-red-600 dark:text-red-300">{{ errors.end_time[0] }}</p>
                 </div>
+                <p v-if="bookingError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
+                    {{ bookingError }}
+                </p>
                 <div class="mt-4 grid gap-4">
                     <div>
                         <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -470,7 +495,7 @@ watch(
                 </div>
                 <div class="mt-5 flex justify-end">
                     <div class="w-full sm:w-auto">
-                        <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!form.start_time || !form.end_time">{{ bookingsStore.saving ? 'Sending...' : 'Request this worker' }}</AppButton>
+                        <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!selectedSlot">{{ bookingsStore.saving ? 'Sending...' : 'Request this worker' }}</AppButton>
                     </div>
                 </div>
             </form>

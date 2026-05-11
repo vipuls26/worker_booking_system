@@ -32,6 +32,8 @@ const canOpenDispute = computed(() => {
         && activeDisputes.value.length === 0;
 });
 const canPayBooking = computed(() => officialBooking.value?.status === 'completed' && officialBooking.value?.payment_status !== 'paid');
+const lockedCommissionRate = computed(() => officialBooking.value?.quote?.commission_rate || officialBooking.value?.commission_rate);
+const paidCommissionRate = computed(() => officialBooking.value?.latest_payment?.commission_rate || lockedCommissionRate.value);
 const paymentButtonLabel = computed(() => {
     if (officialBooking.value?.payment_status === 'paid') {
         return 'Paid';
@@ -233,6 +235,12 @@ onMounted(load);
                         </h3>
                         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
                             Platform commission: ₹{{ officialBooking.platform_commission }} · Worker earning: ₹{{ officialBooking.worker_earning }}
+                        </p>
+                        <p class="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                            Commission rate locked at booking: {{ lockedCommissionRate }}%
+                            <template v-if="officialBooking.latest_payment">
+                                · Paid at {{ paidCommissionRate }}%
+                            </template>
                         </p>
                         <p v-if="officialBooking.payment_status !== 'paid' && officialBooking.status !== 'completed'" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                             Payment unlocks when the worker marks this booking as completed.

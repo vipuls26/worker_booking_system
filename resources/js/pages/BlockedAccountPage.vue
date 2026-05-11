@@ -25,6 +25,12 @@ async function loadRequest() {
     try {
         const response = await authStore.fetchUnblockRequest();
         latestRequest.value = response.data.unblock_request;
+
+        if (latestRequest.value?.status === 'approved') {
+            await authStore.refreshUser();
+            toast.success('Your unblock request was approved');
+            await router.replace(authStore.dashboardPath);
+        }
     } catch {
         toast.error('Unable to load unblock request status');
     } finally {
@@ -94,6 +100,9 @@ onMounted(async () => {
             </div>
 
             <form v-if="!latestRequest || latestRequest.status !== 'pending'" class="mt-6 space-y-4" @submit.prevent="submit">
+                <div v-if="errors.request?.length || errors.account?.length" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
+                    {{ errors.request?.[0] || errors.account?.[0] }}
+                </div>
                 <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin unblock your account?" :error="errors.reason" />
                 <AppButton type="submit" icon="pi-send" :loading="saving">
                     {{ saving ? 'Submitting...' : 'Submit unblock request' }}

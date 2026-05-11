@@ -63,6 +63,12 @@ function openEditModal(workerService) {
     modalOpen.value = true;
 }
 
+function openReapplyModal(workerService) {
+    clearApiErrors();
+    editing.value = workerService;
+    modalOpen.value = true;
+}
+
 function closeModal() {
     clearApiErrors();
     modalOpen.value = false;
@@ -73,11 +79,12 @@ async function saveWorkerService(payload) {
     clearApiErrors();
 
     try {
-        const response = editing.value
+        const isRejectedReapply = editing.value?.approval_status === 'rejected';
+        const response = editing.value && ! isRejectedReapply
             ? await workerServicesStore.update(editing.value.id, payload)
             : await workerServicesStore.create(payload);
 
-        toast.success(response.message || 'Worker service saved');
+        toast.success(response.message || (isRejectedReapply ? 'Worker service resubmitted' : 'Worker service saved'));
         closeModal();
         await load(workerServicesStore.meta.current_page || 1);
     } catch (error) {
@@ -173,6 +180,7 @@ onBeforeUnmount(() => {
                 :worker-services="workerServicesStore.workerServices"
                 :loading="workerServicesStore.loading"
                 @edit="openEditModal"
+                @reapply="openReapplyModal"
                 @delete="deleting = $event"
             />
 

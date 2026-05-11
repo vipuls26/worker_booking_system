@@ -18,6 +18,8 @@ const status = ref('pending');
 const reviewing = ref(null);
 const action = ref('');
 const adminNote = ref('');
+const reviewSaving = ref(false);
+const reviewError = ref('');
 
 const statusOptions = [
     { id: '', name: 'All statuses' },
@@ -52,21 +54,32 @@ function openReview(item, nextAction) {
     reviewing.value = item;
     action.value = nextAction;
     adminNote.value = '';
+    reviewError.value = '';
 }
 
 async function submitReview() {
-    if (action.value === 'approve') {
-        await approveUnblockRequest(reviewing.value.id, adminNote.value);
-        toast.success('User unblocked');
-    } else {
-        await rejectUnblockRequest(reviewing.value.id, adminNote.value);
-        toast.success('Unblock request rejected');
-    }
+    reviewSaving.value = true;
+    reviewError.value = '';
 
-    reviewing.value = null;
-    action.value = '';
-    adminNote.value = '';
-    await load(meta.value.current_page || 1);
+    try {
+        if (action.value === 'approve') {
+            await approveUnblockRequest(reviewing.value.id, adminNote.value);
+            toast.success('User unblocked and notified');
+        } else {
+            await rejectUnblockRequest(reviewing.value.id, adminNote.value);
+            toast.success('Unblock request rejected and user notified');
+        }
+
+        reviewing.value = null;
+        action.value = '';
+        adminNote.value = '';
+        await load(meta.value.current_page || 1);
+    } catch (error) {
+        reviewError.value = error.response?.data?.errors?.request?.[0] || error.response?.data?.message || 'Unable to review unblock request';
+        toast.error(reviewError.value);
+    } finally {
+        reviewSaving.value = false;
+    }
 }
 
 onMounted(load);
@@ -107,8 +120,9 @@ onMounted(load);
         <div v-if="reviewing" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="submitReview">
                 <h2 class="font-semibold capitalize text-gray-900 dark:text-white">{{ action }} unblock request</h2>
+                <p v-if="reviewError" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">{{ reviewError }}</p>
                 <FormTextarea id="unblock_admin_note" v-model="adminNote" label="Admin note optional" />
-                <AppButton type="submit" :icon="action === 'approve' ? 'pi-check' : 'pi-times'">{{ action === 'approve' ? 'Approve' : 'Reject' }}</AppButton>
+                <AppButton type="submit" :loading="reviewSaving" :icon="action === 'approve' ? 'pi-check' : 'pi-times'">{{ action === 'approve' ? 'Approve' : 'Reject' }}</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="reviewing = null">Cancel</button>
             </form>
         </div>

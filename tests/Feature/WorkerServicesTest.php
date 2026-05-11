@@ -48,6 +48,83 @@ class WorkerServicesTest extends TestCase
         ]);
     }
 
+    public function test_worker_can_reapply_after_service_rejection(): void
+    {
+        Sanctum::actingAs($worker = $this->workerUser());
+
+        $service = Service::factory()->create([
+            'name' => 'Deep Cleaning',
+            'slug' => 'deep-cleaning',
+            'is_active' => true,
+        ]);
+
+        $workerService = WorkerService::factory()->rejected()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingFixed,
+            'price' => 700,
+            'minimum_hours' => null,
+            'description' => 'Initial rejected offer.',
+            'is_active' => false,
+            'rejection_reason' => 'Pricing needs more detail.',
+            'reviewed_at' => now(),
+        ]);
+
+        $this->postJson('/api/worker/services', [
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingHourly,
+            'price' => 450,
+            'minimum_hours' => 2,
+            'description' => 'Updated deep cleaning offer.',
+            'is_active' => true,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.worker_service.id', $workerService->id)
+            ->assertJsonPath('data.worker_service.approval_status', WorkerService::StatusPending)
+            ->assertJsonPath('data.worker_service.is_active', false)
+            ->assertJsonPath('data.worker_service.rejection_reason', null);
+
+        $this->assertDatabaseCount('worker_services', 1);
+        $this->assertDatabaseHas('worker_services', [
+            'id' => $workerService->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingHourly,
+            'price' => 450,
+            'minimum_hours' => 2,
+            'description' => 'Updated deep cleaning offer.',
+            'is_active' => false,
+            'approval_status' => WorkerService::StatusPending,
+            'rejection_reason' => null,
+            'reviewed_by' => null,
+            'reviewed_at' => null,
+        ]);
+    }
+
+    public function test_worker_cannot_reapply_when_service_is_not_rejected(): void
+    {
+        Sanctum::actingAs($worker = $this->workerUser());
+
+        $service = Service::factory()->create(['is_active' => true]);
+
+        WorkerService::factory()->pending()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+        ]);
+
+        $this->postJson('/api/worker/services', [
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingFixed,
+            'price' => 500,
+            'description' => 'Duplicate pending offer.',
+            'is_active' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonValidationErrors('service_id');
+    }
+
     public function test_worker_can_create_filter_update_and_delete_hourly_service(): void
     {
         Sanctum::actingAs($worker = $this->workerUser());

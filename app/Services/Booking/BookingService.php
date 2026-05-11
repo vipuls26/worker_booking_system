@@ -333,7 +333,7 @@ class BookingService
         }
 
         $totalAmount = (float) ($serviceRequestWorker->quoted_price ?: $serviceRequest->estimated_amount);
-        $commission = $this->commissionBreakdown($totalAmount);
+        $commission = $this->lockCommission($totalAmount);
 
         $booking = Booking::create([
             'service_request_id' => $serviceRequest->id,
@@ -501,9 +501,13 @@ class BookingService
     }
 
     /**
+     * Lock the platform commission rate and split at booking creation time.
+     *
+     * Payments must use these quoted values later even when the global commission rate changes.
+     *
      * @return array{rate: float, platform_commission: float, worker_earning: float}
      */
-    private function commissionBreakdown(float $totalAmount): array
+    private function lockCommission(float $totalAmount): array
     {
         $rate = Booking::DefaultCommissionRate;
         $platformCommission = round($totalAmount * ($rate / 100), 2);

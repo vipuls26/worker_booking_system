@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Service;
 use App\Models\ServiceRequest;
 use App\Models\User;
+use App\Models\WorkerService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -72,10 +73,42 @@ class DisputeWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_worker_price_dispute_logs_current_service_price_discrepancy(): void
+    {
+        [$customer, $worker, $booking] = $this->createConfirmedBooking([
+            'quoted_amount' => 1000,
+        ]);
+
+        WorkerService::factory()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $booking->service_id,
+            'pricing_type' => WorkerService::PricingFixed,
+            'price' => 1500,
+            'approval_status' => WorkerService::StatusApproved,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->postJson('/api/disputes', [
+            'booking_id' => $booking->id,
+            'category' => 'payment_issue',
+            'title' => 'Booking price is outdated',
+            'description' => 'My current service price is higher than the booked amount.',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.dispute.against_user.id', $customer->id);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $worker->id,
+            'action' => 'dispute.price_discrepancy_reported',
+        ]);
+    }
+
     /**
+     * @param  array<string, mixed>  $bookingOverrides
      * @return array{0: User, 1: User, 2: Booking}
      */
-    private function createConfirmedBooking(): array
+    private function createConfirmedBooking(array $bookingOverrides = []): array
     {
         $this->seed(RoleSeeder::class);
 
@@ -92,6 +125,7 @@ class DisputeWorkflowTest extends TestCase
             'selected_worker_id' => $worker->id,
             'service_id' => $service->id,
             'status' => Booking::STATUS_CONFIRMED,
+            ...$bookingOverrides,
         ]);
         $serviceRequest = ServiceRequest::factory()->create([
             'customer_id' => $customer->id,

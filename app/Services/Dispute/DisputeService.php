@@ -5,7 +5,9 @@ namespace App\Services\Dispute;
 use App\Models\Booking;
 use App\Models\Dispute;
 use App\Models\User;
+use App\Models\WorkerService;
 use App\Services\Audit\AuditLogger;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -91,6 +93,8 @@ class DisputeService
                 'category' => $dispute->category,
             ]);
 
+            $this->logPriceDiscrepancyIfWorkerDisputesPrice($actor, $booking, $dispute);
+
             return $dispute->refresh()->load($this->relations());
         });
     }
@@ -148,5 +152,62 @@ class DisputeService
             'to_status' => $toStatus,
             'note' => $note,
         ]);
+    }
+
+    /**
+     * Log when a worker disputes price after their current service price no longer matches the locked booking quote.
+     */
+    private function logPriceDiscrepancyIfWorkerDisputesPrice(User $actor, Booking $booking, Dispute $dispute): void
+    {
+        // Only worker payment disputes need the locked quote versus current service price check.
+        if ($actor->id !== $booking->worker_id || $dispute->category !== 'payment_issue') {
+            return;
+        }
+
+        $currentWorkerService = WorkerService::query()
+            ->where('worker_id', $booking->worker_id)
+            ->where('service_id', $booking->service_id)
+            ->first();
+
+        // Deleted worker services cannot be compared, so there is no current price discrepancy to log.
+        if (! $currentWorkerService) {
+            return;
+        }
+
+        $currentAmount = $this->currentWorkerServiceAmount($currentWorkerService, $booking);
+        $lockedAmount = (float) $booking->quoted_amount;
+
+        // Matching amounts mean the dispute is not caused by a changed worker service price.
+        if (abs($currentAmount - $lockedAmount) < 0.01) {
+            return;
+        }
+
+        $this->audit->record('dispute.price_discrepancy_reported', $actor, $dispute, [
+            'booking_id' => $booking->id,
+            'worker_service_id' => $currentWorkerService->id,
+            'locked_quoted_amount' => $lockedAmount,
+            'current_worker_service_amount' => $currentAmount,
+        ]);
+    }
+
+    /**
+     * Calculate the worker's current service amount only for discrepancy logging, not for booking payment.
+     */
+    private function currentWorkerServiceAmount(WorkerService $workerService, Booking $booking): float
+    {
+        // Hourly pricing uses the original booking duration so the comparison is fair.
+        if ($workerService->pricing_type === WorkerService::PricingHourly) {
+            $bookingEndTime = $booking->end_time ?: CarbonImmutable::parse($booking->booking_date->toDateString().' '.$booking->start_time)
+                ->addHour()
+                ->format('H:i:s');
+
+            $durationMinutes = CarbonImmutable::parse($booking->booking_date->toDateString().' '.$booking->start_time)
+                ->diffInMinutes(CarbonImmutable::parse($booking->booking_date->toDateString().' '.$bookingEndTime));
+            $hours = max($workerService->minimum_hours ?: 1, (int) ceil($durationMinutes / 60));
+
+            return (float) $workerService->price * $hours;
+        }
+
+        return (float) $workerService->price;
     }
 }

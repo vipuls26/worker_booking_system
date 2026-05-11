@@ -9,13 +9,17 @@ use App\Http\Requests\Api\Worker\UpdateWorkerServiceRequest;
 use App\Http\Resources\ServiceResource;
 use App\Http\Resources\WorkerServiceResource;
 use App\Models\WorkerService;
+use App\Services\Worker\WorkerServiceApplicationService;
 use App\Services\Worker\WorkerServiceManagementService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
 
 class ServiceController extends Controller
 {
-    public function __construct(private readonly WorkerServiceManagementService $workerServices) {}
+    public function __construct(
+        private readonly WorkerServiceManagementService $workerServices,
+        private readonly WorkerServiceApplicationService $workerServiceApplications,
+    ) {}
 
     public function index(IndexWorkerServicesRequest $request): JsonResponse
     {
@@ -46,8 +50,8 @@ class ServiceController extends Controller
 
     public function store(StoreWorkerServiceRequest $request): JsonResponse
     {
-        // New worker offerings enter admin review before becoming bookable.
-        $workerService = $this->workerServices->create($request->user(), $request->validated());
+        // New and previously rejected worker offerings enter admin review before becoming bookable.
+        $workerService = $this->workerServiceApplications->submit($request->user(), $request->validated());
 
         return response()->json([
             'success' => true,

@@ -30,6 +30,7 @@ class UserResource extends JsonResource
             'is_admin_verified' => (bool) $this->is_verified,
             'is_verified' => $this->isPlatformVerified(),
             'verification_status' => $this->verificationStatus(),
+            'active_worker_bookings_count' => (int) ($this->active_worker_bookings_count ?? 0),
             'role' => new RoleResource($this->whenLoaded('role')),
             'created_at' => $this->created_at?->toISOString(),
         ];

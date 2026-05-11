@@ -34,6 +34,7 @@ class WorkerVerificationResource extends JsonResource
             'mobile_verified' => $this->mobile_verified,
             'status' => $this->status,
             'rejection_reason' => $this->rejection_reason,
+            'active_worker_bookings_count' => (int) ($this->user?->active_worker_bookings_count ?? 0),
             'verified_by' => $this->verified_by,
             'verifier' => new UserResource($this->whenLoaded('verifier')),
             'verified_at' => $this->verified_at?->toISOString(),

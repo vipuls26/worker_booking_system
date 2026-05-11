@@ -34,6 +34,8 @@ class Booking extends Model
 
     public const PAYMENT_PAID = 'paid';
 
+    public const PAYMENT_REFUND_REVIEW = 'refund_review';
+
     public const PAYMENT_REFUNDED = 'refunded';
 
     public const DefaultCommissionRate = 10.00;

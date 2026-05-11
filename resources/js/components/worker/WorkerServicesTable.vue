@@ -14,7 +14,7 @@ defineProps({
     },
 });
 
-defineEmits(['edit', 'delete']);
+defineEmits(['edit', 'reapply', 'delete']);
 
 function visibilityStatus(workerService) {
     if (workerService.approval_status !== 'approved') {
@@ -30,6 +30,18 @@ function serviceWarning(workerService) {
     }
 
     return '';
+}
+
+function editButtonLabel(workerService) {
+    return workerService.approval_status === 'rejected' ? 'Reapply' : 'Edit';
+}
+
+function editButtonIcon(workerService) {
+    return workerService.approval_status === 'rejected' ? 'pi-refresh' : 'pi-pencil';
+}
+
+function editEvent(workerService) {
+    return workerService.approval_status === 'rejected' ? 'reapply' : 'edit';
 }
 </script>
 
@@ -78,11 +90,11 @@ function serviceWarning(workerService) {
                         <button
                             type="button"
                             class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-                            title="Edit"
-                            @click="$emit('edit', workerService)"
+                            :title="editButtonLabel(workerService)"
+                            @click="$emit(editEvent(workerService), workerService)"
                         >
-                            <i class="pi pi-pencil" aria-hidden="true"></i>
-                            Edit
+                            <i :class="['pi', editButtonIcon(workerService)]" aria-hidden="true"></i>
+                            {{ editButtonLabel(workerService) }}
                         </button>
                         <button
                             type="button"
@@ -153,10 +165,10 @@ function serviceWarning(workerService) {
                                     <button
                                         type="button"
                                         class="inline-flex size-9 items-center justify-center rounded-md border border-gray-300 text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-                                        title="Edit"
-                                        @click="$emit('edit', workerService)"
+                                        :title="editButtonLabel(workerService)"
+                                        @click="$emit(editEvent(workerService), workerService)"
                                     >
-                                        <i class="pi pi-pencil" aria-hidden="true"></i>
+                                        <i :class="['pi', editButtonIcon(workerService)]" aria-hidden="true"></i>
                                     </button>
                                     <button
                                         type="button"

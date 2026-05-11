@@ -29,7 +29,21 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'submit']);
-const title = computed(() => (props.workerService ? 'Edit service request' : 'Apply for service'));
+const isRejectedReapply = computed(() => props.workerService?.approval_status === 'rejected');
+const title = computed(() => {
+    if (isRejectedReapply.value) {
+        return 'Reapply for service';
+    }
+
+    return props.workerService ? 'Edit service request' : 'Apply for service';
+});
+const submitLabel = computed(() => {
+    if (props.loading) {
+        return 'Submitting...';
+    }
+
+    return isRejectedReapply.value ? 'Resubmit for approval' : 'Submit for approval';
+});
 
 const pricingTypes = [
     { label: 'Fixed Price', value: 'fixed' },
@@ -115,8 +129,15 @@ function submit() {
                     />
                 </div>
 
+                <div
+                    v-if="isRejectedReapply && workerService?.rejection_reason"
+                    class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200"
+                >
+                    Previous rejection: {{ workerService.rejection_reason }}
+                </div>
+
                 <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
-                    Service requests stay hidden from customers until an admin approves them. Editing an approved service sends it back for approval.
+                    Service requests stay hidden from customers until an admin approves them. Reapplying updates the rejected request and sends it back for approval.
                 </div>
 
                 <FormTextarea id="worker_service_description" v-model="form.description" label="Description" :error="errors.description" />
@@ -126,7 +147,7 @@ function submit() {
                         Cancel
                     </button>
                     <div class="sm:w-auto">
-                        <AppButton type="submit" icon="pi-send" :loading="loading">{{ loading ? 'Submitting...' : 'Submit for approval' }}</AppButton>
+                        <AppButton type="submit" icon="pi-send" :loading="loading">{{ submitLabel }}</AppButton>
                     </div>
                 </div>
             </form>

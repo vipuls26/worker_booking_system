@@ -35,9 +35,19 @@ function notificationIcon(notification) {
         work_started: 'pi-play',
         work_completed: 'pi-verified',
         review_received: 'pi-star-fill',
+        unblock_request_approved: 'pi-lock-open',
+        unblock_request_rejected: 'pi-lock',
     };
 
     return icons[notification.event] || 'pi-bell';
+}
+
+function notificationUrl(notification) {
+    if (['unblock_request_approved', 'unblock_request_rejected'].includes(notification.event)) {
+        return '/account/blocked';
+    }
+
+    return notification.url;
 }
 
 async function load(page = 1) {
@@ -53,8 +63,10 @@ async function openNotification(notification) {
         await notificationsStore.markAsRead(notification.id);
     }
 
-    if (notification.url) {
-        await router.push(notification.url);
+    const targetUrl = notificationUrl(notification);
+
+    if (targetUrl) {
+        await router.push(targetUrl);
     }
 }
 
@@ -139,7 +151,7 @@ onMounted(load);
                                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(notification.created_at) }}</p>
                             </div>
                             <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ notification.message }}</p>
-                            <p v-if="notification.url" class="mt-2 text-sm font-semibold text-blue-600 dark:text-blue-300">Open related item</p>
+                            <p v-if="notificationUrl(notification)" class="mt-2 text-sm font-semibold text-blue-600 dark:text-blue-300">Open related item</p>
                         </span>
                     </button>
                     <button

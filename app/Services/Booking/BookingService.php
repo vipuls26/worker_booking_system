@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\WorkerService;
 use App\Notifications\ServiceRequestWorkflowNotification;
 use App\Services\Audit\AuditLogger;
+use App\Services\CommissionSettingService;
 use App\Services\Worker\WorkerScheduleService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -25,6 +26,7 @@ class BookingService
         private readonly AvailabilityService $availability,
         private readonly WorkerScheduleService $workerSchedules,
         private readonly AuditLogger $audit,
+        private readonly CommissionSettingService $commissionSettings,
     ) {}
 
     /**
@@ -509,14 +511,7 @@ class BookingService
      */
     private function lockCommission(float $totalAmount): array
     {
-        $rate = Booking::DefaultCommissionRate;
-        $platformCommission = round($totalAmount * ($rate / 100), 2);
-
-        return [
-            'rate' => $rate,
-            'platform_commission' => $platformCommission,
-            'worker_earning' => round($totalAmount - $platformCommission, 2),
-        ];
+        return $this->commissionSettings->splitForAmount($totalAmount);
     }
 
     /**

@@ -30,6 +30,7 @@ import AdminWorkerVerificationsPage from '../pages/admin/WorkerVerificationsPage
 import AdminUnblockRequestsPage from '../pages/admin/UnblockRequestsPage.vue';
 import AdminDisputesPage from '../pages/admin/DisputesPage.vue';
 import AdminAuditLogsPage from '../pages/admin/AuditLogsPage.vue';
+import AdminCommissionSettingsPage from '../pages/admin/CommissionSettingsPage.vue';
 import WorkerAccountPage from '../pages/worker/AccountPage.vue';
 
 const routes = [
@@ -57,6 +58,12 @@ const routes = [
         path: '/admin/services',
         name: 'admin.services',
         component: AdminServicesPage,
+        meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+        path: '/admin/commission-settings',
+        name: 'admin.commission-settings',
+        component: AdminCommissionSettingsPage,
         meta: { requiresAuth: true, role: 'admin' },
     },
     {

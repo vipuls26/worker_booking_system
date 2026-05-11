@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\WorkerService;
 use App\Notifications\ServiceRequestWorkflowNotification;
 use App\Services\Audit\AuditLogger;
+use App\Services\Worker\WorkerScheduleService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,7 @@ class BookingService
         private readonly BookingWorkflowService $workflow,
         private readonly WorkerMatchingService $workerMatching,
         private readonly AvailabilityService $availability,
+        private readonly WorkerScheduleService $workerSchedules,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -41,6 +43,8 @@ class BookingService
             }
 
             $durationMinutes = $this->durationMinutes($data);
+            $this->ensureDirectWorkerCanReceiveRequestedSlot($data);
+
             $workerServices = $this->workerMatching->matchingWorkerServices([
                 ...$data,
                 'duration_minutes' => $durationMinutes,
@@ -407,6 +411,40 @@ class BookingService
         }
     }
 
+    /**
+     * Validate direct worker booking requests against the worker's schedule before matching starts.
+     *
+     * The request layer reports this first, and this service-level check protects other callers.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function ensureDirectWorkerCanReceiveRequestedSlot(array $data): void
+    {
+        // Auto-matched bookings do not have one chosen worker yet, so matching filters each worker later.
+        if (empty($data['worker_id'])) {
+            return;
+        }
+
+        $worker = User::find((int) $data['worker_id']);
+
+        // Invalid worker IDs are handled by request validation before this service is normally called.
+        if (! $worker instanceof User) {
+            return;
+        }
+
+        $availabilityError = $this->workerSchedules->bookingAvailabilityError(
+            worker: $worker,
+            bookingDate: (string) $data['booking_date'],
+            startTime: (string) $data['start_time'],
+            endTime: $this->bookingEndTime($data),
+        );
+
+        // Direct worker booking should fail with the schedule-specific reason.
+        if ($availabilityError !== null) {
+            throw ValidationException::withMessages(['start_time' => [$availabilityError]]);
+        }
+    }
+
     private function durationMinutes(array $data): int
     {
         // Explicit duration wins because some services are priced from the chosen slot length.
@@ -421,6 +459,23 @@ class BookingService
         }
 
         return 60;
+    }
+
+    /**
+     * Resolve the booking end time from an explicit end time or the requested duration.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function bookingEndTime(array $data): string
+    {
+        // Explicit end time wins because it represents the customer-selected booking window.
+        if (! empty($data['end_time'])) {
+            return (string) $data['end_time'];
+        }
+
+        return CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])
+            ->addMinutes($this->durationMinutes($data))
+            ->format('H:i');
     }
 
     private function shouldAutoSelectAcceptedWorker(ServiceRequestWorker $serviceRequestWorker): bool

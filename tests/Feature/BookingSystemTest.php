@@ -93,6 +93,51 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('errors.start_time.0', 'This worker already has a booking that overlaps the selected time.');
     }
 
+    public function test_booking_creation_rejects_worker_off_day(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        WorkerSchedule::factory()->offDay()->create([
+            'worker_id' => $worker->id,
+            'day_of_week' => 1,
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/customer/bookings', [
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need help.',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('start_time')
+            ->assertJsonPath('errors.start_time.0', 'This worker is not available on the selected day.');
+    }
+
+    public function test_booking_creation_rejects_time_outside_worker_schedule(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/customer/bookings', [
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '08:00',
+            'end_time' => '09:00',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need help.',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('start_time')
+            ->assertJsonPath('errors.start_time.0', 'This worker is not scheduled during the selected time.');
+    }
+
     public function test_service_layer_rejects_in_progress_booking_overlap(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();

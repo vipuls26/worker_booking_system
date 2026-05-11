@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\UnblockRequest;
 use App\Models\User;
+use App\Notifications\UnblockRequestReviewedNotification;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -36,16 +37,28 @@ class UnblockRequestManagementService
 
     private function review(UnblockRequest $unblockRequest, User $admin, string $status, ?string $note): UnblockRequest
     {
-        // Each unblock request should receive exactly one admin decision.
-        if ($unblockRequest->status !== UnblockRequest::STATUS_PENDING) {
-            throw ValidationException::withMessages([
-                'request' => ['This unblock request has already been reviewed.'],
-            ]);
-        }
-
         return DB::transaction(function () use ($unblockRequest, $admin, $status, $note): UnblockRequest {
+            // Lock the request so two admins cannot review the same unblock appeal at once.
+            $lockedUnblockRequest = UnblockRequest::query()
+                ->whereKey($unblockRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Each unblock request should receive exactly one admin decision.
+            if ($lockedUnblockRequest->status !== UnblockRequest::STATUS_PENDING) {
+                throw ValidationException::withMessages([
+                    'request' => ['This unblock request has already been reviewed.'],
+                ]);
+            }
+
+            // Lock the blocked user so approval and account access changes commit together.
+            $blockedUser = User::query()
+                ->whereKey($lockedUnblockRequest->user_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             // Store the decision details so the user and audit log can explain the account outcome.
-            $unblockRequest->update([
+            $lockedUnblockRequest->update([
                 'status' => $status,
                 'admin_note' => $note,
                 'reviewed_by' => $admin->id,
@@ -54,15 +67,20 @@ class UnblockRequestManagementService
 
             // An approved appeal restores account access immediately.
             if ($status === UnblockRequest::STATUS_APPROVED) {
-                $unblockRequest->user?->update(['is_blocked' => false]);
+                $blockedUser->update(['is_blocked' => false]);
             }
 
-            $this->audit->record('admin.unblock_request_'.$status, $admin, $unblockRequest, [
-                'user_id' => $unblockRequest->user_id,
+            $this->audit->record('admin.unblock_request_'.$status, $admin, $lockedUnblockRequest, [
+                'user_id' => $lockedUnblockRequest->user_id,
                 'note' => $note,
             ]);
 
-            return $unblockRequest->refresh()->load(['user.role', 'reviewer.role']);
+            $reviewedRequest = $lockedUnblockRequest->refresh()->load(['user.role', 'reviewer.role']);
+
+            // Users need a durable notification for both approved and rejected unblock decisions.
+            $blockedUser->notify(new UnblockRequestReviewedNotification($reviewedRequest));
+
+            return $reviewedRequest;
         });
     }
 }

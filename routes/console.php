@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('payouts:process-weekly')
     ->weeklyOn(0, '23:00')
     ->withoutOverlapping();
+
+Schedule::command('service-requests:cancel-expired')
+    ->hourly()
+    ->withoutOverlapping();

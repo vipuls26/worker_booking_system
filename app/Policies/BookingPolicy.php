@@ -34,6 +34,12 @@ class BookingPolicy
         return $booking->customer_id === $user->id && in_array($booking->status, [Booking::STATUS_CONFIRMED, Booking::STATUS_PENDING], true);
     }
 
+    public function bookAgain(User $user, Booking $booking): bool
+    {
+        // Rebooking is available only to the customer after the original work is complete.
+        return $booking->customer_id === $user->id && $booking->status === Booking::STATUS_COMPLETED;
+    }
+
     public function updateStatus(User $user, Booking $booking): bool
     {
         return $booking->worker_id === $user->id;

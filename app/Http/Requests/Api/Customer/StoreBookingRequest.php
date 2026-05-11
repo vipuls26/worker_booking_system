@@ -24,6 +24,7 @@ class StoreBookingRequest extends ApiFormRequest
         $this->merge([
             'duration_minutes' => $durationMinutes,
             'end_time' => $endTime ?: null,
+            'recreated_from_booking_id' => $this->input('recreated_from_booking_id') ?: $this->input('source_booking_id'),
         ]);
     }
 
@@ -43,6 +44,7 @@ class StoreBookingRequest extends ApiFormRequest
             'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],
             'address' => ['nullable', 'string', 'max:1000'],
             'issue_description' => ['required', 'string', 'max:2000'],
+            'recreated_from_booking_id' => ['nullable', 'integer', Rule::exists('bookings', 'id')],
         ];
     }
 

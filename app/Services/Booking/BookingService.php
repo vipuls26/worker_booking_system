@@ -27,6 +27,7 @@ class BookingService
         private readonly WorkerScheduleService $workerSchedules,
         private readonly AuditLogger $audit,
         private readonly CommissionSettingService $commissionSettings,
+        private readonly BookAgainService $bookAgain,
     ) {}
 
     /**
@@ -44,6 +45,7 @@ class BookingService
                 ]);
             }
 
+            $sourceBooking = $this->bookAgain->assertSourceCanCreate($customer, $data);
             $durationMinutes = $this->durationMinutes($data);
             $this->ensureDirectWorkerCanReceiveRequestedSlot($data);
 
@@ -65,6 +67,7 @@ class BookingService
                 'customer_id' => $customer->id,
                 'selected_worker_id' => null,
                 'booking_id' => null,
+                'recreated_from_booking_id' => $sourceBooking?->id,
                 'service_id' => $data['service_id'],
                 'requested_date' => $data['booking_date'],
                 'start_time' => $data['start_time'],
@@ -378,6 +381,19 @@ class BookingService
 
         $booking = $booking->refresh()->load($this->bookingRelations());
         $this->workflow->record($booking, null, $booking->status, 'worker_selected', $actor);
+
+        // Repeat bookings need a visible timeline note once the new booking actually exists.
+        if ($serviceRequest->recreated_from_booking_id) {
+            $this->workflow->record(
+                booking: $booking,
+                fromStatus: null,
+                toStatus: $booking->status,
+                event: 'booking_recreated',
+                actor: $actor,
+                note: sprintf('Booking recreated from completed booking #%d', $serviceRequest->recreated_from_booking_id),
+            );
+        }
+
         event(new BookingCreated($booking));
 
         $this->audit->record('service_request.worker_selected', $actor, $serviceRequest, [
@@ -567,6 +583,7 @@ class BookingService
             'booking.disputes.openedBy.role',
             'booking.disputes.againstUser.role',
             'booking.disputes.statusHistory.actor.role',
+            'recreatedFromBooking',
             'workers.worker' => fn ($query) => $query
                 ->with(['role', 'workerProfile'])
                 ->withAvg('workerReviews as rating_average', 'rating')

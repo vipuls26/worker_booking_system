@@ -27,6 +27,7 @@ class ServiceRequestResource extends JsonResource
             'selected_worker' => new UserResource($this->whenLoaded('selectedWorker')),
             'selected_worker_id' => $this->selected_worker_id,
             'booking_id' => $this->booking_id,
+            'recreated_from_booking_id' => $this->recreated_from_booking_id,
             'booking' => new BookingResource($this->whenLoaded('booking')),
             'service' => new ServiceResource($this->whenLoaded('service')),
             'booking_date' => $this->requested_date?->toDateString(),

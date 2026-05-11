@@ -8,6 +8,10 @@ export function createBooking(payload) {
     return http.post('/customer/bookings', payload);
 }
 
+export function prepareBookAgain(id) {
+    return http.post(`/customer/bookings/${id}/book-again`);
+}
+
 export function getBooking(id) {
     return http.get(`/customer/bookings/${id}`);
 }

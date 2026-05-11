@@ -41,6 +41,18 @@ export const useCustomerBookingsStore = defineStore('customerBookings', {
             }
         },
 
+        async prepareBookAgain(id) {
+            this.saving = true;
+
+            try {
+                const response = await bookingsApi.prepareBookAgain(id);
+
+                return response.data;
+            } finally {
+                this.saving = false;
+            }
+        },
+
         async fetchOne(id) {
             this.loading = true;
 

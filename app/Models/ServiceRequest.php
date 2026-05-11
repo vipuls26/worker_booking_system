@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['customer_id', 'service_id', 'selected_worker_id', 'booking_id', 'requested_date', 'start_time', 'end_time', 'address', 'description', 'estimated_amount', 'status'])]
+#[Fillable(['customer_id', 'service_id', 'selected_worker_id', 'booking_id', 'recreated_from_booking_id', 'requested_date', 'start_time', 'end_time', 'address', 'description', 'estimated_amount', 'status'])]
 class ServiceRequest extends Model
 {
     public const STATUS_OPEN = 'open';
@@ -51,6 +51,14 @@ class ServiceRequest extends Model
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    /**
+     * @return BelongsTo<Booking, $this>
+     */
+    public function recreatedFromBooking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class, 'recreated_from_booking_id');
     }
 
     /**

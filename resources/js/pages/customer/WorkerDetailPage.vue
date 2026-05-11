@@ -21,6 +21,7 @@ const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
 const worker = computed(() => workersStore.worker);
 const form = reactive({
+    source_booking_id: '',
     service_id: '',
     booking_date: new Date().toISOString().slice(0, 10),
     duration_minutes: 60,
@@ -108,6 +109,42 @@ async function submitBooking() {
     }
 }
 
+function applyBookAgainPrefill() {
+    if (! route.query.book_again_from) {
+        return;
+    }
+
+    const prefill = storedBookAgainPrefill(route.query.book_again_from) || route.query;
+    const serviceId = String(prefill.service_id || '');
+    const hasService = serviceOptions.value.some((service) => String(service.id) === serviceId);
+
+    if (hasService) {
+        form.service_id = serviceId;
+    }
+
+    form.source_booking_id = route.query.book_again_from || '';
+    form.booking_date = prefill.booking_date || form.booking_date;
+    form.duration_minutes = Number(prefill.duration_minutes || form.duration_minutes);
+    form.start_time = prefill.start_time || '';
+    form.end_time = prefill.end_time || '';
+    form.address = prefill.address || form.address;
+    form.issue_description = prefill.issue_description || form.issue_description;
+}
+
+function storedBookAgainPrefill(sourceBookingId) {
+    const storedPrefill = sessionStorage.getItem(`book-again:${sourceBookingId}`);
+
+    if (! storedPrefill) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(storedPrefill);
+    } catch {
+        return null;
+    }
+}
+
 function firstError(fields) {
     for (const field of fields) {
         const fieldErrors = errors.value[field];
@@ -158,13 +195,18 @@ function formatDuration(minutes) {
     return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
 }
 
-async function refreshAvailability() {
+async function refreshAvailability(options = {}) {
     if (! form.booking_date || ! route.params.id) {
         return;
     }
 
-    form.start_time = '';
-    form.end_time = '';
+    const selectedStartTime = form.start_time;
+    const selectedEndTime = form.end_time;
+
+    if (! options.keepSelection) {
+        form.start_time = '';
+        form.end_time = '';
+    }
 
     try {
         await workersStore.fetchAvailability(route.params.id, {
@@ -172,6 +214,13 @@ async function refreshAvailability() {
             slot_minutes: slotMinutes.value,
             service_id: form.service_id,
         });
+
+        if (options.keepSelection) {
+            const matchingSlot = workersStore.availability.find((slot) => slot.available && String(slot.start_time).slice(0, 5) === String(selectedStartTime).slice(0, 5) && String(slot.end_time).slice(0, 5) === String(selectedEndTime).slice(0, 5));
+
+            form.start_time = matchingSlot ? String(selectedStartTime).slice(0, 5) : '';
+            form.end_time = matchingSlot ? String(selectedEndTime).slice(0, 5) : '';
+        }
     } catch {
         toast.error('Unable to load available slots');
     }
@@ -187,7 +236,8 @@ onMounted(async () => {
         form.service_id = worker.value?.services?.[0]?.service_id || '';
         form.duration_minutes = durationOptions.value[0]?.id || 60;
         useSavedAddress();
-        await refreshAvailability();
+        applyBookAgainPrefill();
+        await refreshAvailability({ keepSelection: Boolean(route.query.book_again_from) });
     } catch {
         toast.error('Unable to load worker details');
     }

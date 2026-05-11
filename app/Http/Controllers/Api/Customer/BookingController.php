@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Booking\CancelOwnBookingRequest;
+use App\Http\Requests\Api\Customer\BookAgainRequest;
 use App\Http\Requests\Api\Customer\IndexCustomerBookingsRequest;
 use App\Http\Requests\Api\Customer\PayBookingRequest;
 use App\Http\Requests\Api\Customer\SelectBookingWorkerRequest;
@@ -11,6 +12,7 @@ use App\Http\Requests\Api\Customer\StoreBookingRequest;
 use App\Http\Resources\PaymentResource;
 use App\Http\Resources\ServiceRequestResource;
 use App\Models\ServiceRequest;
+use App\Services\Booking\BookAgainService;
 use App\Services\Booking\BookingService;
 use App\Services\Payment\PaymentService;
 use App\Support\Api\PaginationMeta;
@@ -22,6 +24,7 @@ class BookingController extends Controller
     public function __construct(
         private readonly BookingService $bookings,
         private readonly PaymentService $payments,
+        private readonly BookAgainService $bookAgain,
     ) {}
 
     public function index(IndexCustomerBookingsRequest $request): JsonResponse
@@ -67,6 +70,18 @@ class BookingController extends Controller
             'message' => 'Booking retrieved',
             'data' => [
                 'booking' => new ServiceRequestResource($booking->load($this->bookings->serviceRequestRelations())),
+            ],
+        ]);
+    }
+
+    public function bookAgain(BookAgainRequest $request, ServiceRequest $booking): JsonResponse
+    {
+        // Book again only returns safe defaults; final creation still goes through booking validation.
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking details ready',
+            'data' => [
+                'prefill' => $this->bookAgain->prefill($request->user(), $booking),
             ],
         ]);
     }

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { useRoute, RouterLink } from 'vue-router';
+import { useRoute, RouterLink, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../../components/common/AppButton.vue';
 import BookingTimeline from '../../components/common/BookingTimeline.vue';
@@ -16,10 +16,13 @@ import { createDispute } from '../../api/disputes';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 
 const route = useRoute();
+const router = useRouter();
 const bookingsStore = useCustomerBookingsStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
 const cancelReason = ref('');
 const disputeSaving = ref(false);
+const bookAgainPrefill = ref(null);
+const checkingBookAgainAvailability = ref(false);
 const booking = computed(() => bookingsStore.booking);
 const officialBooking = computed(() => booking.value?.booking || null);
 const activeDisputes = computed(() => officialBooking.value?.disputes?.filter((dispute) => ['open', 'under_review'].includes(dispute.status)) || []);
@@ -32,6 +35,7 @@ const canOpenDispute = computed(() => {
         && activeDisputes.value.length === 0;
 });
 const canPayBooking = computed(() => officialBooking.value?.status === 'completed' && officialBooking.value?.payment_status !== 'paid');
+const canBookAgain = computed(() => officialBooking.value?.status === 'completed' && bookAgainPrefill.value);
 const lockedCommissionRate = computed(() => officialBooking.value?.quote?.commission_rate || officialBooking.value?.commission_rate);
 const paidCommissionRate = computed(() => officialBooking.value?.latest_payment?.commission_rate || lockedCommissionRate.value);
 const paymentButtonLabel = computed(() => {
@@ -69,6 +73,7 @@ const disputeCategories = [
 async function load() {
     try {
         await bookingsStore.fetchOne(route.params.id);
+        await refreshBookAgainAvailability();
     } catch {
         toast.error('Unable to load booking');
     }
@@ -105,6 +110,52 @@ async function payBooking() {
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to process payment');
     }
+}
+
+async function bookAgain() {
+    if (! canBookAgain.value) {
+        return;
+    }
+
+    try {
+        const prefill = await prepareBookAgainPrefill();
+
+        sessionStorage.setItem(`book-again:${prefill.source_booking_id}`, JSON.stringify(prefill));
+        toast.success('Booking details prefilled');
+        await router.push({
+            name: 'customer.workers.show',
+            params: { id: prefill.worker_id },
+            query: {
+                book_again_from: prefill.source_booking_id,
+            },
+        });
+    } catch (error) {
+        toast.error(error.response?.data?.message || firstErrorFromResponse(error) || 'Unable to book again');
+    }
+}
+
+async function refreshBookAgainAvailability() {
+    bookAgainPrefill.value = null;
+
+    if (officialBooking.value?.status !== 'completed') {
+        return;
+    }
+
+    checkingBookAgainAvailability.value = true;
+
+    try {
+        bookAgainPrefill.value = await prepareBookAgainPrefill();
+    } catch {
+        bookAgainPrefill.value = null;
+    } finally {
+        checkingBookAgainAvailability.value = false;
+    }
+}
+
+async function prepareBookAgainPrefill() {
+    const response = await bookingsStore.prepareBookAgain(route.params.id);
+
+    return response.data.prefill;
 }
 
 async function submitReview() {
@@ -223,6 +274,12 @@ onMounted(load);
 
                 <div class="mt-6">
                     <BookingStatusTracker :status="booking.booking?.status || booking.status" />
+                </div>
+
+                <div v-if="canBookAgain" class="mt-5 flex justify-end">
+                    <AppButton type="button" icon="pi-refresh" :loading="bookingsStore.saving || checkingBookAgainAvailability" @click="bookAgain">
+                        Book Again
+                    </AppButton>
                 </div>
             </section>
 

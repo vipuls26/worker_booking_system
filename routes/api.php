@@ -148,6 +148,7 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
         Route::get('bookings', [CustomerBookingController::class, 'index']);
         Route::post('bookings', [CustomerBookingController::class, 'store'])->middleware('throttle:booking-actions');
         Route::get('bookings/{booking}', [CustomerBookingController::class, 'show']);
+        Route::post('bookings/{booking}/book-again', [CustomerBookingController::class, 'bookAgain'])->middleware('throttle:booking-actions');
         Route::post('bookings/{booking}/review', [ReviewController::class, 'store']);
         Route::patch('bookings/{booking}/select-worker', [CustomerBookingController::class, 'selectWorker'])->middleware('throttle:booking-actions');
         Route::post('bookings/{booking}/pay', [CustomerBookingController::class, 'pay'])->middleware('throttle:booking-actions');

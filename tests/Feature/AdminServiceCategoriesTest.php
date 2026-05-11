@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Booking;
 use App\Models\Role;
 use App\Models\Service;
 use App\Models\User;
@@ -93,6 +94,68 @@ class AdminServiceCategoriesTest extends TestCase
             ->assertJsonPath('message', 'Service deleted');
 
         $this->assertSoftDeleted('services', ['id' => $service->id]);
+    }
+
+    public function test_admin_cannot_soft_delete_service_with_active_bookings_without_force(): void
+    {
+        $admin = $this->adminUser();
+        $service = Service::factory()->create();
+        $booking = Booking::factory()->create([
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->deleteJson("/api/admin/services/{$service->id}")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('service');
+
+        $this->assertNotSoftDeleted('services', ['id' => $service->id]);
+
+        $this->assertDatabaseMissing('booking_activities', [
+            'booking_id' => $booking->id,
+            'event' => 'service_soft_deleted',
+        ]);
+    }
+
+    public function test_admin_can_force_soft_delete_service_with_active_bookings_without_cancelling_them(): void
+    {
+        $admin = $this->adminUser();
+        $service = Service::factory()->create();
+        $booking = Booking::factory()->create([
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->deleteJson("/api/admin/services/{$service->id}", ['force' => true])
+            ->assertOk()
+            ->assertJsonPath('message', 'Service deleted');
+
+        $this->assertSoftDeleted('services', ['id' => $service->id]);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        $this->assertDatabaseHas('booking_activities', [
+            'booking_id' => $booking->id,
+            'actor_id' => $admin->id,
+            'from_status' => Booking::STATUS_CONFIRMED,
+            'to_status' => Booking::STATUS_CONFIRMED,
+            'event' => 'service_soft_deleted',
+            'note' => 'Service soft deleted by admin; existing booking continues.',
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'admin.service_deleted',
+            'subject_type' => (new Service)->getMorphClass(),
+            'subject_id' => $service->id,
+        ]);
     }
 
     public function test_non_admin_cannot_manage_service_categories(): void

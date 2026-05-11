@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\DeleteServiceRequest;
 use App\Http\Requests\Api\Admin\IndexServicesRequest;
 use App\Http\Requests\Api\Admin\StoreServiceRequest;
 use App\Http\Requests\Api\Admin\UpdateServiceRequest;
@@ -64,10 +65,10 @@ class ServiceController extends Controller
         ]);
     }
 
-    public function destroy(Service $service): JsonResponse
+    public function destroy(DeleteServiceRequest $request, Service $service): JsonResponse
     {
         // Deleting a service removes it from marketplace management without returning stale payload data.
-        $this->service->delete($service);
+        $this->service->delete($service, $request->user(), $request->boolean('force'));
 
         return response()->json([
             'success' => true,

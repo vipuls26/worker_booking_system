@@ -19,6 +19,7 @@ const saving = ref(false);
 const modalOpen = ref(false);
 const editing = ref(null);
 const deleting = ref(null);
+const forceDeleting = ref(false);
 
 async function load(page = 1) {
     try {
@@ -49,6 +50,11 @@ function closeModal() {
     modalOpen.value = false;
     editing.value = null;
     clearApiErrors();
+}
+
+function openDeleteDialog(service) {
+    deleting.value = service;
+    forceDeleting.value = false;
 }
 
 async function saveService(payload) {
@@ -83,13 +89,28 @@ async function toggleStatus(service) {
 
 async function confirmDelete() {
     try {
-        const response = await servicesStore.delete(deleting.value.id);
+        const response = await servicesStore.delete(deleting.value.id, forceDeleting.value);
         toast.success(response.message || 'Service deleted');
         deleting.value = null;
+        forceDeleting.value = false;
         await load(servicesStore.meta.current_page || 1);
-    } catch {
-        toast.error('Unable to delete service');
+    } catch (error) {
+        const serviceErrors = error.response?.data?.errors?.service || [];
+
+        if (serviceErrors.length > 0) {
+            forceDeleting.value = true;
+            toast.error(serviceErrors[0]);
+
+            return;
+        }
+
+        toast.error(error.response?.data?.message || 'Unable to delete service');
     }
+}
+
+function cancelDelete() {
+    deleting.value = null;
+    forceDeleting.value = false;
 }
 
 onMounted(() => load());
@@ -131,7 +152,7 @@ onMounted(() => load());
                 :services="servicesStore.services"
                 :loading="servicesStore.loading"
                 @edit="openEditModal"
-                @delete="deleting = $event"
+                @delete="openDeleteDialog"
                 @toggle="toggleStatus"
             />
 
@@ -149,9 +170,11 @@ onMounted(() => load());
 
         <ConfirmDialog
             :open="Boolean(deleting)"
-            title="Delete service category"
-            :message="`This will soft delete ${deleting?.name || 'this service category'}.`"
-            @cancel="deleting = null"
+            :title="forceDeleting ? 'Force delete service category' : 'Delete service category'"
+            :message="forceDeleting
+                ? `This service has active bookings. Force soft delete ${deleting?.name || 'this service category'}? Existing bookings will continue, new bookings will be blocked, and each active booking will receive a timeline note.`
+                : `This will soft delete ${deleting?.name || 'this service category'}.`"
+            @cancel="cancelDelete"
             @confirm="confirmDelete"
         />
     </AdminLayout>

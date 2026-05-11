@@ -2,16 +2,23 @@
 
 namespace App\Services\Admin;
 
+use App\Models\Booking;
 use App\Models\Service;
 use App\Models\User;
+use App\Services\Audit\AuditLogger;
 use App\Support\Filters\ServiceFilter;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ServiceManagementService
 {
-    public function __construct(private readonly ServiceFilter $filter) {}
+    public function __construct(
+        private readonly ServiceFilter $filter,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function paginate(Request $request): LengthAwarePaginator
     {
@@ -51,9 +58,41 @@ class ServiceManagementService
         return $service->refresh()->load('creator');
     }
 
-    public function delete(Service $service): void
+    /**
+     * Soft delete a service only when bookings are safe or the admin has confirmed force deletion.
+     */
+    public function delete(Service $service, User $admin, bool $force = false): void
     {
-        $service->delete();
+        DB::transaction(function () use ($service, $admin, $force): void {
+            // Active bookings must keep running, so admins must explicitly force service deletion.
+            $activeBookings = $service->bookings()
+                ->whereIn('status', Booking::ActiveStatuses)
+                ->get();
+
+            if ($activeBookings->isNotEmpty() && ! $force) {
+                throw ValidationException::withMessages([
+                    'service' => ['This service has active bookings. Use force=true to soft delete it while keeping existing bookings active.'],
+                ]);
+            }
+
+            $service->delete();
+
+            // Existing bookings continue, but their timeline should show that the service category was removed.
+            foreach ($activeBookings as $booking) {
+                $booking->activities()->create([
+                    'actor_id' => $admin->id,
+                    'from_status' => $booking->status,
+                    'to_status' => $booking->status,
+                    'event' => 'service_soft_deleted',
+                    'note' => 'Service soft deleted by admin; existing booking continues.',
+                ]);
+            }
+
+            $this->audit->record('admin.service_deleted', $admin, $service, [
+                'force' => $force,
+                'active_bookings_count' => $activeBookings->count(),
+            ]);
+        });
     }
 
     public function toggleStatus(Service $service): Service

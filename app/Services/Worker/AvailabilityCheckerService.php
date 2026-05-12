@@ -13,6 +13,14 @@ use Carbon\CarbonImmutable;
 class AvailabilityCheckerService
 {
     /**
+     * Return the current application time as an immutable value so date-sensitive slot checks stay consistent.
+     */
+    private function currentDateTime(): CarbonImmutable
+    {
+        return CarbonImmutable::now();
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function slotsForDate(User $worker, string $date, int $slotMinutes = 60, ?WorkerService $workerService = null): array
@@ -63,9 +71,18 @@ class AvailabilityCheckerService
         $slots = [];
         $cursor = CarbonImmutable::parse($date->toDateString().' '.$schedule->start_time);
         $scheduleEnd = CarbonImmutable::parse($date->toDateString().' '.$schedule->end_time);
+        $slotStepMinutes = $this->slotStepMinutes($slotMinutes);
 
         while ($cursor->addMinutes($slotMinutes)->lessThanOrEqualTo($scheduleEnd)) {
             $slotEnd = $cursor->addMinutes($slotMinutes);
+
+            // Customers should only see slots that have not already started today.
+            if ($this->shouldSkipPastSlot($date, $cursor)) {
+                $cursor = $cursor->addMinutes($slotStepMinutes);
+
+                continue;
+            }
+
             $overlap = $this->overlapReason($worker, $date->toDateString(), $cursor->format('H:i:s'), $slotEnd->format('H:i:s'));
             $slots[] = [
                 'time' => $cursor->format('H:i'),
@@ -80,10 +97,33 @@ class AvailabilityCheckerService
                 'minimum_hours' => $workerService?->minimum_hours,
                 'estimated_total' => $workerService ? $this->estimatedTotal($workerService, $slotMinutes) : null,
             ];
-            $cursor = $slotEnd;
+            $cursor = $cursor->addMinutes($slotStepMinutes);
         }
 
         return $slots;
+    }
+
+    /**
+     * Move slot start times forward in smaller intervals so same-day customers can still book the next real opening.
+     */
+    private function slotStepMinutes(int $slotMinutes): int
+    {
+        return min(30, max(15, $slotMinutes));
+    }
+
+    /**
+     * Skip same-day slots that already started so customers cannot request time that has passed.
+     */
+    private function shouldSkipPastSlot(CarbonImmutable $slotDate, CarbonImmutable $slotStart): bool
+    {
+        $currentDateTime = $this->currentDateTime();
+
+        // Future dates should keep their full schedule.
+        if (! $slotDate->isSameDay($currentDateTime)) {
+            return false;
+        }
+
+        return $slotStart->lessThan($currentDateTime);
     }
 
     private function hasBookingOverlap(User $worker, string $date, string $startTime, string $endTime): bool

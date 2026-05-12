@@ -112,19 +112,22 @@ onMounted(async () => {
             <SkeletonCard v-for="item in 4" :key="item" :lines="2" :avatar="false" />
         </div>
 
-        <div v-else class="grid gap-4 md:grid-cols-4">
-            <DashboardCard
-                v-for="card in analytics.cards"
-                :key="card.label"
-                :eyebrow="card.label"
-                :title="['Paid by customers', 'Available for payout'].includes(card.label) ? `₹${card.value}` : String(card.value)"
-                description="Worker analytics"
-            />
-        </div>
+        <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <div v-if="!loading" class="grid gap-4 md:grid-cols-4">
+                <DashboardCard
+                    v-for="card in analytics.cards"
+                    :key="card.label"
+                    :eyebrow="card.label"
+                    :title="['Paid by customers', 'Available for payout'].includes(card.label) ? `₹${card.value}` : String(card.value)"
+                    description="Worker analytics"
+                />
+            </div>
+        </Transition>
 
         <SkeletonCard v-if="loading" class="mt-6" :lines="4" :avatar="false" />
 
-        <section v-else class="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+        <Transition appear enter-active-class="fade-up-enter-active delay-75" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <section v-if="!loading" class="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Earnings</p>
@@ -156,62 +159,68 @@ onMounted(async () => {
                     </div>
                 </div>
             </div>
-        </section>
+            </section>
+        </Transition>
 
-        <AppPanel v-if="!loading" class="mt-6">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                    <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Availability</p>
-                    <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Today’s working windows</h2>
-                    <div v-if="analytics.availability.today_windows.length" class="mt-3 flex flex-wrap gap-2">
-                        <span
-                            v-for="window in analytics.availability.today_windows"
-                            :key="`${window.start}-${window.end}`"
-                            class="rounded-md bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-                        >
-                            {{ window.start }} - {{ window.end }}
-                        </span>
+        <Transition appear enter-active-class="fade-up-enter-active delay-100" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <AppPanel v-if="!loading" class="mt-6">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Availability</p>
+                        <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Today’s working windows</h2>
+                        <div v-if="analytics.availability.today_windows.length" class="mt-3 flex flex-wrap gap-2">
+                            <span
+                                v-for="window in analytics.availability.today_windows"
+                                :key="`${window.start}-${window.end}`"
+                                class="rounded-md bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            >
+                                {{ window.start }} - {{ window.end }}
+                            </span>
+                        </div>
+                        <p v-else class="mt-2 text-sm text-gray-600 dark:text-gray-400">No working windows configured for today.</p>
                     </div>
-                    <p v-else class="mt-2 text-sm text-gray-600 dark:text-gray-400">No working windows configured for today.</p>
+
+                    <div class="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
+                        <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Days</p>
+                            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.configured_days }}/7</p>
+                        </div>
+                        <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Windows</p>
+                            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.working_windows }}</p>
+                        </div>
+                        <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Next off</p>
+                            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.next_off_day || 'None' }}</p>
+                        </div>
+                    </div>
+
+                    <RouterLink
+                        to="/worker/availability"
+                        class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                    >
+                        <i class="pi pi-calendar" aria-hidden="true"></i>
+                        Manage
+                    </RouterLink>
                 </div>
-
-                <div class="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-                    <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Days</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.configured_days }}/7</p>
-                    </div>
-                    <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Windows</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.working_windows }}</p>
-                    </div>
-                    <div class="rounded-md bg-gray-50 p-3 dark:bg-gray-950">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Next off</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ analytics.availability.next_off_day || 'None' }}</p>
-                    </div>
-                </div>
-
-                <RouterLink
-                    to="/worker/availability"
-                    class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-                >
-                    <i class="pi pi-calendar" aria-hidden="true"></i>
-                    Manage
-                </RouterLink>
-            </div>
-        </AppPanel>
+            </AppPanel>
+        </Transition>
 
         <div v-if="loading" class="mt-6 grid gap-5 lg:grid-cols-2">
             <SkeletonCard v-for="item in 4" :key="item" :lines="5" :avatar="false" />
         </div>
 
-        <div v-else class="mt-6 grid gap-5 lg:grid-cols-2">
-            <AnalyticsBarChart title="Booking statuses" subtitle="Your active and completed booking split." :items="analytics.booking_statuses" />
-            <AnalyticsTable title="Top services" :rows="analytics.top_services" :columns="serviceColumns" />
-            <AnalyticsTable title="Recent reviews" :rows="analytics.recent_reviews" :columns="reviewColumns" />
-        </div>
+        <Transition appear enter-active-class="fade-up-enter-active delay-150" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <div v-if="!loading" class="mt-6 grid gap-5 lg:grid-cols-2">
+                <AnalyticsBarChart title="Booking statuses" subtitle="Your active and completed booking split." :items="analytics.booking_statuses" />
+                <AnalyticsTable title="Top services" :rows="analytics.top_services" :columns="serviceColumns" />
+                <AnalyticsTable title="Recent reviews" :rows="analytics.recent_reviews" :columns="reviewColumns" />
+            </div>
+        </Transition>
 
-        <div class="mt-6 grid gap-5 xl:grid-cols-[1fr_420px]">
-            <AppPanel>
+        <Transition appear enter-active-class="fade-up-enter-active delay-200" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <div v-if="!loading" class="mt-6 grid gap-5 xl:grid-cols-[1fr_420px]">
+                <AppPanel>
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Setup Flow</p>
@@ -239,9 +248,9 @@ onMounted(async () => {
                         </span>
                     </RouterLink>
                 </div>
-            </AppPanel>
+                </AppPanel>
 
-            <AppPanel>
+                <AppPanel>
                 <div>
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Daily Work</p>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Run bookings</h2>
@@ -260,7 +269,8 @@ onMounted(async () => {
                         </div>
                     </RouterLink>
                 </div>
-            </AppPanel>
-        </div>
+                </AppPanel>
+            </div>
+        </Transition>
     </DashboardLayout>
 </template>

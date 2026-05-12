@@ -47,24 +47,24 @@ defineEmits(['update:modelValue']);
             <select
                 :id="id"
                 :value="modelValue"
-                class="block min-h-10 w-full min-w-0 appearance-none rounded-md border-blue-100 bg-white py-2 pl-3 pr-10 text-gray-900 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-blue-400 dark:focus:ring-blue-400"
+                class="block min-h-10 w-full min-w-0 appearance-none rounded-md border-slate-300 bg-white py-2 pl-3 pr-10 text-slate-900 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark] dark:focus:border-blue-400 dark:focus:ring-blue-400"
                 @change="$emit('update:modelValue', Number($event.target.value) || $event.target.value)"
             >
-                <option value="" disabled class="bg-white text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+                <option value="" disabled class="bg-white text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                     {{ placeholder }}
                 </option>
                 <option
                     v-for="option in options"
                     :key="option[optionValue]"
                     :value="option[optionValue]"
-                    class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white"
+                    class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100"
                 >
                     {{ option[optionLabel] }}
                 </option>
             </select>
 
             <span
-                class="pointer-events-none absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-500 dark:text-gray-400"
+                class="pointer-events-none absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400"
             >
                 <i class="pi pi-chevron-down text-xs" aria-hidden="true"></i>
             </span>

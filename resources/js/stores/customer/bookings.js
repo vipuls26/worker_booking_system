@@ -73,6 +73,19 @@ export const useCustomerBookingsStore = defineStore('customerBookings', {
             return response.data;
         },
 
+        async reschedule(id, payload) {
+            this.saving = true;
+
+            try {
+                const response = await bookingsApi.rescheduleBooking(id, payload);
+                this.booking = response.data.data.booking;
+
+                return response.data;
+            } finally {
+                this.saving = false;
+            }
+        },
+
         async selectWorker(id, payload) {
             const response = await bookingsApi.selectBookingWorker(id, payload);
             this.booking = response.data.data.booking;

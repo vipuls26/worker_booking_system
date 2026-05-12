@@ -3,15 +3,15 @@
 namespace App\Http\Requests\Api\Customer;
 
 use App\Http\Requests\Api\ApiFormRequest;
-use App\Rules\WorkerBookingScheduleRule;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use Carbon\CarbonImmutable;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreBookingRequest extends ApiFormRequest
+class RescheduleBookingRequest extends ApiFormRequest
 {
     /**
-     * Build the requested booking start time in application time so same-day requests can be checked safely.
+     * Build the requested booking start time so same-day reschedules cannot move into the past.
      */
     private function requestedStartDateTime(): ?CarbonImmutable
     {
@@ -19,7 +19,6 @@ class StoreBookingRequest extends ApiFormRequest
             return null;
         }
 
-        // Invalid formats should be handled by the validator without throwing here.
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->input('booking_date')) || ! preg_match('/^\d{2}:\d{2}$/', (string) $this->input('start_time'))) {
             return null;
         }
@@ -49,7 +48,7 @@ class StoreBookingRequest extends ApiFormRequest
             'start_time' => $normalizedStartTime ?: $this->input('start_time'),
             'duration_minutes' => $durationMinutes,
             'end_time' => $endTime ?: null,
-            'recreated_from_booking_id' => $this->input('recreated_from_booking_id') ?: $this->input('source_booking_id'),
+            'worker_id' => $this->assignedWorkerId(),
         ]);
     }
 
@@ -70,6 +69,22 @@ class StoreBookingRequest extends ApiFormRequest
     }
 
     /**
+     * Read the worker from the awaiting-reschedule invitation tied to this request.
+     */
+    private function assignedWorkerId(): ?int
+    {
+        $booking = $this->route('booking');
+
+        if (! $booking instanceof ServiceRequest) {
+            return null;
+        }
+
+        return $booking->workers()
+            ->where('status', ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE)
+            ->value('worker_id');
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, mixed>
@@ -77,15 +92,10 @@ class StoreBookingRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'worker_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
-            'service_id' => ['required', 'integer', Rule::exists('services', 'id')->where('is_active', true)],
             'booking_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'start_time' => ['required', 'date_format:H:i', app(WorkerBookingScheduleRule::class)],
+            'start_time' => ['required', 'date_format:H:i'],
             'duration_minutes' => ['required', 'integer', 'min:60', 'max:480'],
             'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],
-            'address' => ['nullable', 'string', 'max:1000'],
-            'issue_description' => ['required', 'string', 'max:2000'],
-            'recreated_from_booking_id' => ['nullable', 'integer', Rule::exists('bookings', 'id')],
         ];
     }
 
@@ -98,21 +108,10 @@ class StoreBookingRequest extends ApiFormRequest
             function (Validator $validator): void {
                 $requestedStartDateTime = $this->requestedStartDateTime();
 
-                // Customers should not be able to request a slot that has already started.
+                // Customers should not be able to reschedule into a time slot that already passed.
                 if ($requestedStartDateTime !== null && $requestedStartDateTime->lessThan(CarbonImmutable::now())) {
                     $validator->errors()->add('start_time', 'Please choose the current time or a future time.');
                 }
-
-                // A service address is required before a worker can be dispatched.
-                if ($this->filled('address')) {
-                    return;
-                }
-
-                if ($this->user()?->customerProfile?->address) {
-                    return;
-                }
-
-                $validator->errors()->add('address', 'Add a service address or save a default address in your profile.');
             },
         ];
     }

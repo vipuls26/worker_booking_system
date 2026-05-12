@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\ServiceRequestWorkerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +21,8 @@ class ServiceRequestWorker extends Model
     public const STATUS_CANCELLED = 'cancelled';
 
     public const STATUS_EXPIRED = 'expired';
+
+    public const STATUS_AWAITING_RESCHEDULE = 'awaiting_reschedule';
 
     public const STATUS_SELECTED = 'selected';
 
@@ -61,5 +64,20 @@ class ServiceRequestWorker extends Model
             'quoted_price' => 'decimal:2',
             'responded_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Keep worker request lists focused on items that still need worker action.
+     *
+     * @param  Builder<ServiceRequestWorker>  $query
+     * @return Builder<ServiceRequestWorker>
+     */
+    public function scopeActionableForWorker(Builder $query): Builder
+    {
+        return $query->whereNotIn('status', [
+            self::STATUS_AWAITING_RESCHEDULE,
+            self::STATUS_CANCELLED,
+            self::STATUS_EXPIRED,
+        ]);
     }
 }

@@ -7,6 +7,7 @@ use App\Http\Requests\Api\Booking\CancelOwnBookingRequest;
 use App\Http\Requests\Api\Customer\BookAgainRequest;
 use App\Http\Requests\Api\Customer\IndexCustomerBookingsRequest;
 use App\Http\Requests\Api\Customer\PayBookingRequest;
+use App\Http\Requests\Api\Customer\RescheduleBookingRequest;
 use App\Http\Requests\Api\Customer\SelectBookingWorkerRequest;
 use App\Http\Requests\Api\Customer\StoreBookingRequest;
 use App\Http\Resources\PaymentResource;
@@ -113,6 +114,22 @@ class BookingController extends Controller
             'data' => [
                 'booking' => new ServiceRequestResource(
                     $this->bookings->cancelServiceRequest($booking, $request->user(), $request->string('cancelled_reason')->toString() ?: null),
+                ),
+            ],
+        ]);
+    }
+
+    public function reschedule(RescheduleBookingRequest $request, ServiceRequest $booking): JsonResponse
+    {
+        // Only the customer who owns the request can move it to a new time slot.
+        Gate::authorize('reschedule', $booking);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking request rescheduled',
+            'data' => [
+                'booking' => new ServiceRequestResource(
+                    $this->bookings->rescheduleServiceRequest($booking, $request->user(), $request->validated()),
                 ),
             ],
         ]);

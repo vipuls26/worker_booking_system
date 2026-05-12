@@ -13,7 +13,26 @@ import FormTextarea from '../../components/forms/FormTextarea.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { createDispute } from '../../api/disputes';
+import { getWorker as getCustomerWorker } from '../../api/customer/workers';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
+
+function localDateString() {
+    const today = new Date();
+    const timezoneOffsetInMilliseconds = today.getTimezoneOffset() * 60 * 1000;
+
+    return new Date(today.getTime() - timezoneOffsetInMilliseconds).toISOString().slice(0, 10);
+}
+
+function addDaysToLocalDate(dateString, daysToAdd) {
+    const date = new Date(`${dateString}T00:00:00`);
+    date.setDate(date.getDate() + daysToAdd);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -53,9 +72,22 @@ const acceptedRequests = computed(() => booking.value?.requests?.filter((request
 const selectedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'selected') || []);
 const comparisonRequests = computed(() => [...selectedRequests.value, ...acceptedRequests.value]);
 const otherRequests = computed(() => booking.value?.requests?.filter((request) => !['accepted', 'selected'].includes(request.status)) || []);
+const awaitingRescheduleRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'awaiting_reschedule') || []);
+const assignedRescheduleWorkerId = computed(() => awaitingRescheduleRequests.value[0]?.worker_id || null);
+const needsReschedule = computed(() => booking.value?.status === 'open' && awaitingRescheduleRequests.value.length > 0 && !officialBooking.value);
+const bookingDisplayStatus = computed(() => (needsReschedule.value ? 'awaiting_reschedule' : (booking.value?.booking?.status || booking.value?.status || 'open')));
+const bookingDisplayWorkerName = computed(() => awaitingRescheduleRequests.value[0]?.worker?.name || booking.value?.worker?.name || 'Awaiting final worker');
+const quickRescheduleSlots = ref([]);
+const quickRescheduleLoading = ref(false);
 const reviewForm = reactive({
     rating: 0,
     review: '',
+});
+const rescheduleForm = reactive({
+    booking_date: '',
+    start_time: '',
+    end_time: '',
+    duration_minutes: 60,
 });
 const disputeForm = reactive({
     category: '',
@@ -73,6 +105,8 @@ const disputeCategories = [
 async function load() {
     try {
         await bookingsStore.fetchOne(route.params.id);
+        syncRescheduleForm();
+        await loadQuickRescheduleSlots();
         await refreshBookAgainAvailability();
     } catch {
         toast.error('Unable to load booking');
@@ -95,6 +129,20 @@ async function selectWorker(bookingRequest) {
         toast.success('Worker selected');
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to select worker');
+    }
+}
+
+async function reschedule() {
+    clearApiErrors();
+
+    try {
+        await bookingsStore.reschedule(route.params.id, rescheduleForm);
+        syncRescheduleForm();
+        await loadQuickRescheduleSlots();
+        toast.success('Booking request rescheduled');
+    } catch (error) {
+        setApiError(error);
+        toast.error(error.response?.data?.message || 'Unable to reschedule booking');
     }
 }
 
@@ -244,6 +292,99 @@ function reviewLabel(worker) {
     return `${count} ${count === 1 ? 'review' : 'reviews'}`;
 }
 
+async function loadQuickRescheduleSlots() {
+    quickRescheduleSlots.value = [];
+
+    if (! needsReschedule.value || ! assignedRescheduleWorkerId.value || ! booking.value?.service?.id) {
+        return;
+    }
+
+    quickRescheduleLoading.value = true;
+
+    try {
+        const desiredDurationMinutes = calculateDurationMinutes(
+            booking.value.start_time,
+            booking.value.end_time,
+        );
+
+        const searchStartDate = booking.value.booking_date && booking.value.booking_date >= localDateString()
+            ? booking.value.booking_date
+            : localDateString();
+
+        let cursorDate = searchStartDate;
+        const suggestedSlots = [];
+
+        // Check a few upcoming days so customers can quickly pick the next workable slot.
+        for (let dayIndex = 0; dayIndex < 7 && suggestedSlots.length < 6; dayIndex++) {
+            const response = await getCustomerWorker(assignedRescheduleWorkerId.value, {
+                available_date: cursorDate,
+                slot_minutes: desiredDurationMinutes,
+                service_id: booking.value.service.id,
+            });
+
+            const availableSlots = (response.data.data.availability || [])
+                .filter((slot) => slot.available)
+                .slice(0, Math.max(0, 6 - suggestedSlots.length))
+                .map((slot) => ({
+                    booking_date: cursorDate,
+                    start_time: slot.start_time,
+                    end_time: slot.end_time,
+                    label: `${cursorDate} · ${slot.start_time} - ${slot.end_time}`,
+                }));
+
+            suggestedSlots.push(...availableSlots);
+
+            cursorDate = addDaysToLocalDate(cursorDate, 1);
+        }
+
+        quickRescheduleSlots.value = suggestedSlots;
+    } finally {
+        quickRescheduleLoading.value = false;
+    }
+}
+
+function applyQuickRescheduleSlot(slot) {
+    rescheduleForm.booking_date = slot.booking_date;
+    rescheduleForm.start_time = slot.start_time;
+    rescheduleForm.end_time = slot.end_time;
+    rescheduleForm.duration_minutes = calculateDurationMinutes(slot.start_time, slot.end_time);
+}
+
+function isQuickRescheduleSlotSelected(slot) {
+    return rescheduleForm.booking_date === slot.booking_date
+        && rescheduleForm.start_time === slot.start_time
+        && rescheduleForm.end_time === slot.end_time;
+}
+
+function firstErrorFromResponse(error) {
+    const responseErrors = error.response?.data?.errors || {};
+    const firstField = Object.keys(responseErrors)[0];
+
+    return firstField && Array.isArray(responseErrors[firstField]) ? responseErrors[firstField][0] : '';
+}
+
+function syncRescheduleForm() {
+    if (! booking.value) {
+        return;
+    }
+
+    rescheduleForm.booking_date = booking.value.booking_date || '';
+    rescheduleForm.start_time = booking.value.start_time || '';
+    rescheduleForm.end_time = booking.value.end_time || '';
+    rescheduleForm.duration_minutes = calculateDurationMinutes(rescheduleForm.start_time, rescheduleForm.end_time);
+}
+
+function calculateDurationMinutes(startTime, endTime) {
+    if (!startTime || !endTime) {
+        return 60;
+    }
+
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+
+    return ((endHour * 60) + endMinute) - ((startHour * 60) + startMinute);
+}
+
 onMounted(load);
 </script>
 
@@ -267,13 +408,45 @@ onMounted(load);
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ booking.service?.name }}</h2>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ booking.worker?.name || 'Awaiting final worker' }} · {{ booking.booking_date }} {{ booking.start_time }} - {{ booking.end_time }}</p>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ bookingDisplayWorkerName }} · {{ booking.booking_date }} {{ booking.start_time }} - {{ booking.end_time }}</p>
                     </div>
                     <p class="text-lg font-semibold text-gray-900 dark:text-white">₹{{ booking.total_amount }}</p>
                 </div>
 
                 <div class="mt-6">
-                    <BookingStatusTracker :status="booking.booking?.status || booking.status" />
+                    <BookingStatusTracker :status="bookingDisplayStatus" />
+                </div>
+
+                <div v-if="needsReschedule" class="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                    <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Worker availability changed</p>
+                    <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                        {{ awaitingRescheduleRequests[0]?.worker?.name || 'The worker' }} is no longer available for this time slot. Please choose a new time or cancel this request.
+                    </p>
+                    <div class="mt-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Next available slots</p>
+                        <div v-if="quickRescheduleLoading" class="mt-3 text-sm text-amber-700 dark:text-amber-300">
+                            Finding the next available slots...
+                        </div>
+                        <div v-else-if="quickRescheduleSlots.length" class="mt-3 flex flex-wrap gap-2">
+                            <button
+                                v-for="slot in quickRescheduleSlots"
+                                :key="slot.label"
+                                type="button"
+                                :class="[
+                                    'rounded-md border px-3 py-2 text-sm font-medium transition',
+                                    isQuickRescheduleSlotSelected(slot)
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20'
+                                        : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-400/30 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-amber-500/10',
+                                ]"
+                                @click="applyQuickRescheduleSlot(slot)"
+                            >
+                                {{ slot.label }}
+                            </button>
+                        </div>
+                        <p v-else class="mt-3 text-sm text-amber-700 dark:text-amber-300">
+                            No quick slots found yet. You can still choose another time manually or cancel this request.
+                        </p>
+                    </div>
                 </div>
 
                 <div v-if="canBookAgain" class="mt-5 flex justify-end">
@@ -474,13 +647,32 @@ onMounted(load);
                     </dl>
                 </div>
 
-                <form v-if="booking.status === 'open'" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="cancel">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
-                    <textarea v-model="cancelReason" rows="4" class="mt-4 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white" placeholder="Reason"></textarea>
-                    <div class="mt-4">
-                        <AppButton type="submit" icon="pi-times">Cancel booking</AppButton>
+                <div class="space-y-5">
+                    <form v-if="needsReschedule" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="reschedule">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">Reschedule booking</h3>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a new date and time for this same worker request.</p>
+                        <div class="mt-4 grid gap-4">
+                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" :error="errors.booking_date" />
+                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" :error="errors.start_time" />
+                            <FormInput id="reschedule_end_time" v-model="rescheduleForm.end_time" type="time" label="End time" :error="errors.end_time" />
+                        </div>
+                        <div class="mt-4">
+                            <AppButton type="submit" icon="pi-calendar" :loading="bookingsStore.saving">Reschedule booking</AppButton>
+                        </div>
+                    </form>
+
+                    <form v-if="booking.status === 'open'" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="cancel">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
+                        <textarea v-model="cancelReason" rows="4" class="mt-4 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white" placeholder="Reason"></textarea>
+                        <div class="mt-4">
+                            <AppButton type="submit" icon="pi-times">Cancel booking</AppButton>
+                        </div>
+                    </form>
+                    <div v-else class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Cancellation is available only while this request is still open.</p>
                     </div>
-                </form>
+                </div>
             </section>
 
             <BookingTimeline :timeline="booking.timeline" />

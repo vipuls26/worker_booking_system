@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\User;
 use App\Models\WorkerService;
+use App\Models\WorkerVerification;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ class WorkerServiceApprovalService
         // Admins review worker service offerings with enough worker and category context to approve safely.
         return WorkerService::query()
             ->with(['worker:id,name,email,phone', 'service:id,name,slug,icon,is_active', 'reviewer:id,name'])
+            ->whereHas('worker.workerVerification', function ($verificationQuery): void {
+                // Admin service review should only include workers whose identity proof has already been approved.
+                $verificationQuery->where('status', WorkerVerification::STATUS_APPROVED);
+            })
             ->when($request->filled('status'), fn ($query) => $query->where('approval_status', $request->string('status')->toString()))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $search = $request->string('search')->toString();

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Worker;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Worker\IndexWorkerBookingsRequest;
 use App\Http\Requests\Api\Worker\RespondBookingRequestRequest;
+use App\Http\Requests\Api\Worker\StartBookingRequest;
 use App\Http\Requests\Api\Worker\UpdateBookingStatusRequest;
 use App\Http\Resources\BookingResource;
 use App\Http\Resources\ServiceRequestWorkerResource;
@@ -121,6 +122,27 @@ class BookingController extends Controller
             'message' => 'Booking status updated',
             'data' => [
                 'booking' => new BookingResource($this->bookings->updateStatus($booking, $status, $reason, $request->user())),
+            ],
+        ]);
+    }
+
+    public function start(StartBookingRequest $request, Booking $booking): JsonResponse
+    {
+        // Only the assigned worker can start the booking.
+        Gate::authorize('updateStatus', $booking);
+
+        // The shared booking service checks schedule time and workflow rules.
+        $startedBooking = $this->bookings->updateStatus(
+            booking: $booking,
+            status: Booking::STATUS_IN_PROGRESS,
+            actor: $request->user(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking started successfully',
+            'data' => [
+                'booking' => new BookingResource($startedBooking),
             ],
         ]);
     }

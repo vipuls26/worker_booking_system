@@ -13,6 +13,7 @@ use App\Notifications\ServiceRequestWorkflowNotification;
 use App\Services\Audit\AuditLogger;
 use App\Services\CommissionSettingService;
 use App\Services\Worker\WorkerScheduleService;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -140,7 +141,11 @@ class BookingService
         return ServiceRequestWorker::query()
             ->with(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role'])
             ->where('worker_id', $worker->id)
-            ->when($status, fn ($query) => $query->where('status', $status))
+            ->when(
+                $status,
+                fn ($query) => $query->where('status', $status),
+                fn ($query) => $query->actionableForWorker(),
+            )
             ->latest()
             ->paginate($perPage);
     }
@@ -224,6 +229,11 @@ class BookingService
 
     public function updateStatus(Booking $booking, string $status, ?string $reason = null, ?User $actor = null): Booking
     {
+        // Starting work has extra business rules beyond the normal status flow.
+        if ($status === Booking::STATUS_IN_PROGRESS) {
+            $this->assertBookingCanStart($booking);
+        }
+
         $oldStatus = $booking->status;
 
         $booking = $this->workflow
@@ -258,7 +268,11 @@ class BookingService
         ]);
 
         $serviceRequest->workers()
-            ->whereIn('status', [ServiceRequestWorker::STATUS_PENDING, ServiceRequestWorker::STATUS_ACCEPTED])
+            ->whereIn('status', [
+                ServiceRequestWorker::STATUS_PENDING,
+                ServiceRequestWorker::STATUS_ACCEPTED,
+                ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+            ])
             ->update([
                 'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
                 'responded_at' => now(),
@@ -269,6 +283,119 @@ class BookingService
         ]);
 
         return $serviceRequest->refresh()->load($this->serviceRequestRelations());
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function rescheduleServiceRequest(ServiceRequest $serviceRequest, User $customer, array $data): ServiceRequest
+    {
+        abort_if($serviceRequest->customer_id !== $customer->id, 404);
+
+        return DB::transaction(function () use ($serviceRequest, $customer, $data): ServiceRequest {
+            // Reload inside the transaction so stale customer actions do not overwrite newer changes.
+            $lockedServiceRequest = ServiceRequest::query()
+                ->with(['customer.role', 'service', 'workers.worker.role'])
+                ->lockForUpdate()
+                ->findOrFail($serviceRequest->id);
+
+            // Only unresolved requests can move to a new slot.
+            if ($lockedServiceRequest->status !== ServiceRequest::STATUS_OPEN || $lockedServiceRequest->booking_id !== null) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only open booking requests can be rescheduled.'],
+                ]);
+            }
+
+            // The reschedule action is reserved for requests the worker already pushed back.
+            $awaitingRescheduleRequest = $lockedServiceRequest->workers()
+                ->with('worker')
+                ->where('status', ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE)
+                ->first();
+
+            if (! $awaitingRescheduleRequest instanceof ServiceRequestWorker) {
+                throw ValidationException::withMessages([
+                    'status' => ['This booking request is not waiting for reschedule.'],
+                ]);
+            }
+
+            $rescheduleData = [
+                ...$data,
+                'worker_id' => $awaitingRescheduleRequest->worker_id,
+                'service_id' => $lockedServiceRequest->service_id,
+            ];
+
+            // The new slot must still fit the same worker's published schedule and service rules.
+            $this->ensureDirectWorkerCanReceiveRequestedSlot($rescheduleData);
+
+            $worker = $awaitingRescheduleRequest->worker;
+            $durationMinutes = $this->durationMinutes($rescheduleData);
+
+            // Prevent reopening the request on a time slot that is still unavailable.
+            if (! $worker || ! $this->availability->isWorkerAvailable(
+                worker: $worker,
+                date: (string) $data['booking_date'],
+                startTime: (string) $data['start_time'],
+                durationMinutes: $durationMinutes,
+                ignoreServiceRequestId: $lockedServiceRequest->id,
+            )) {
+                throw ValidationException::withMessages([
+                    'start_time' => ['This worker is not available for the selected time slot.'],
+                ]);
+            }
+
+            $lockedServiceRequest->update([
+                'requested_date' => $data['booking_date'],
+                'start_time' => $data['start_time'],
+                'end_time' => $this->bookingEndTime($data),
+            ]);
+
+            $awaitingRescheduleRequest->update([
+                'status' => ServiceRequestWorker::STATUS_PENDING,
+                'response_reason' => null,
+                'responded_at' => null,
+            ]);
+
+            $this->audit->record('service_request.rescheduled', $customer, $lockedServiceRequest, [
+                'worker_id' => $awaitingRescheduleRequest->worker_id,
+                'requested_date' => $lockedServiceRequest->requested_date?->toDateString(),
+                'start_time' => $lockedServiceRequest->start_time,
+                'end_time' => $lockedServiceRequest->end_time,
+            ]);
+
+            return $lockedServiceRequest->refresh()->load($this->serviceRequestRelations());
+        });
+    }
+
+    /**
+     * Make sure the worker starts the booking only when the scheduled time has arrived.
+     */
+    private function assertBookingCanStart(Booking $booking): void
+    {
+        // Cancelled bookings are already closed, so work cannot start.
+        if ($booking->status === Booking::STATUS_CANCELLED) {
+            throw ValidationException::withMessages([
+                'status' => ['Cancelled bookings cannot be started.'],
+            ]);
+        }
+
+        // Completed bookings are already finished, so they cannot be started again.
+        if ($booking->status === Booking::STATUS_COMPLETED) {
+            throw ValidationException::withMessages([
+                'status' => ['Completed bookings cannot be started again.'],
+            ]);
+        }
+
+        // The worker must wait until the scheduled booking date and start time.
+        $scheduledStartDateTime = Carbon::parse(
+            $booking->booking_date?->toDateString().' '.$booking->start_time
+        );
+        $currentDateTime = Carbon::now();
+
+        if ($currentDateTime->lt($scheduledStartDateTime)) {
+            throw ValidationException::withMessages([
+                'status' => ['This booking can only be started on or after the scheduled start time.'],
+            ]);
+        }
     }
 
     private function selectSingleAcceptedWorkerRequest(ServiceRequestWorker $serviceRequestWorker, User $actor): ServiceRequestWorker
@@ -411,7 +538,53 @@ class BookingService
             'status' => $booking->status,
         ]);
 
+        $this->moveOverlappingPendingRequestsToAwaitingReschedule($booking, $serviceRequestWorker->id);
+
         return $booking;
+    }
+
+    /**
+     * Move conflicting pending requests out of the worker's action queue once the slot is taken.
+     */
+    private function moveOverlappingPendingRequestsToAwaitingReschedule(Booking $booking, int $selectedRequestId): void
+    {
+        $conflictMessage = 'Worker is no longer available for selected time slot.';
+
+        // Find open pending requests for the same worker that overlap the newly created booking.
+        $overlappingRequests = ServiceRequestWorker::query()
+            ->with(['serviceRequest.customer', 'serviceRequest.service'])
+            ->where('worker_id', $booking->worker_id)
+            ->where('status', ServiceRequestWorker::STATUS_PENDING)
+            ->whereKeyNot($selectedRequestId)
+            ->whereHas('serviceRequest', function ($query) use ($booking): void {
+                $query
+                    ->where('status', ServiceRequest::STATUS_OPEN)
+                    ->whereDate('requested_date', $booking->booking_date?->toDateString())
+                    ->where('start_time', '<', $booking->end_time)
+                    ->where('end_time', '>', $booking->start_time);
+            })
+            ->get();
+
+        foreach ($overlappingRequests as $overlappingRequest) {
+            $overlappingRequest->update([
+                'status' => ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+                'response_reason' => $conflictMessage,
+                'responded_at' => now(),
+            ]);
+
+            $customer = $overlappingRequest->serviceRequest?->customer;
+
+            if (! $customer) {
+                continue;
+            }
+
+            $customer->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $overlappingRequest->serviceRequest->refresh()->loadMissing('service'),
+                event: 'service_request_awaiting_reschedule',
+                title: 'Reschedule needed',
+                message: 'Your selected worker is no longer available for this time slot. Please reschedule or cancel this request.',
+            ));
+        }
     }
 
     private function ensureWorkerCanReceiveBooking(?User $worker, string $field): void
@@ -450,6 +623,8 @@ class BookingService
             return;
         }
 
+        $this->ensureDirectWorkerDurationMatchesConfiguredService($data);
+
         $availabilityError = $this->workerSchedules->bookingAvailabilityError(
             worker: $worker,
             bookingDate: (string) $data['booking_date'],
@@ -463,17 +638,60 @@ class BookingService
         }
     }
 
-    private function durationMinutes(array $data): int
+    /**
+     * Enforce the configured hourly duration when a customer books one specific worker directly.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function ensureDirectWorkerDurationMatchesConfiguredService(array $data): void
     {
-        // Explicit duration wins because some services are priced from the chosen slot length.
-        if (! empty($data['duration_minutes'])) {
-            return (int) $data['duration_minutes'];
+        // Only direct worker bookings have one exact worker-service configuration to enforce.
+        if (empty($data['worker_id']) || empty($data['service_id'])) {
+            return;
         }
 
-        // When an end time is supplied, derive the duration so quotes match the scheduled window.
+        // Retrieve the worker's approved active service so the booking follows that exact offer.
+        $workerService = WorkerService::query()
+            ->where('worker_id', (int) $data['worker_id'])
+            ->where('service_id', (int) $data['service_id'])
+            ->where('is_active', true)
+            ->where('approval_status', WorkerService::StatusApproved)
+            ->first();
+
+        if (! $workerService instanceof WorkerService) {
+            return;
+        }
+
+        // Fixed-price services do not use a worker-defined hourly duration.
+        if ($workerService->pricing_type !== WorkerService::PricingHourly) {
+            return;
+        }
+
+        $requiredDurationMinutes = (int) ($workerService->minimum_hours ?: 1) * 60;
+        $requestedDurationMinutes = $this->durationMinutes($data);
+
+        if ($requestedDurationMinutes !== $requiredDurationMinutes) {
+            throw ValidationException::withMessages([
+                'duration_minutes' => [sprintf(
+                    'This worker requires exactly %d %s for this hourly service.',
+                    (int) ($workerService->minimum_hours ?: 1),
+                    (int) ($workerService->minimum_hours ?: 1) === 1 ? 'hour' : 'hours',
+                )],
+            ]);
+        }
+    }
+
+    private function durationMinutes(array $data): int
+    {
+        // When an end time is supplied, derive the duration from the actual selected time range.
         if (! empty($data['end_time'])) {
             return CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])
                 ->diffInMinutes(CarbonImmutable::parse($data['booking_date'].' '.$data['end_time']));
+        }
+
+        // Fallback to the explicit duration when the request did not send an end time.
+        if (! empty($data['duration_minutes'])) {
+            return (int) $data['duration_minutes'];
         }
 
         return 60;

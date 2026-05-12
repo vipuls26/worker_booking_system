@@ -42,4 +42,12 @@ class ServiceRequestPolicy
         // Customers can cancel service requests only before worker selection.
         return $serviceRequest->customer_id === $user->id && $serviceRequest->status === ServiceRequest::STATUS_OPEN;
     }
+
+    public function reschedule(User $user, ServiceRequest $serviceRequest): bool
+    {
+        // Customers can reschedule only their own open request before a booking is finalized.
+        return $serviceRequest->customer_id === $user->id
+            && $serviceRequest->status === ServiceRequest::STATUS_OPEN
+            && $serviceRequest->booking_id === null;
+    }
 }

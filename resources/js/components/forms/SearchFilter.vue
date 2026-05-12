@@ -40,7 +40,7 @@ onBeforeUnmount(() => {
         <input
             :value="modelValue"
             :placeholder="placeholder"
-            class="block w-full rounded-md border-blue-100 bg-white text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-blue-400 dark:focus:ring-blue-400"
+            class="block w-full rounded-md border-slate-300 bg-white text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400"
             @input="update($event.target.value)"
         >
         <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400">

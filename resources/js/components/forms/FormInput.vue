@@ -40,6 +40,10 @@ const props = defineProps({
         type: [String, Number],
         default: null,
     },
+    disabled: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 defineEmits(['update:modelValue']);
@@ -61,8 +65,9 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
                 :min="min"
                 :max="max"
                 :step="step"
+                :disabled="disabled"
                 :class="[
-                    'block min-h-10 w-full min-w-0 rounded-md border-blue-100 bg-white text-gray-900 shadow-sm [color-scheme:light] placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:placeholder:text-gray-500 dark:focus:border-blue-400 dark:focus:ring-blue-400',
+                    'block min-h-10 w-full min-w-0 rounded-md border-slate-300 bg-white text-slate-900 shadow-sm [color-scheme:light] placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark] dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400 dark:disabled:bg-slate-900 dark:disabled:text-slate-500',
                     isPassword ? 'pr-10' : '',
                 ]"
                 @input="$emit('update:modelValue', $event.target.value)"
@@ -70,7 +75,7 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
             <button
                 v-if="isPassword"
                 type="button"
-                class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-500 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                 :aria-label="isPasswordVisible ? 'Hide password' : 'Show password'"
                 @click="isPasswordVisible = !isPasswordVisible"
             >

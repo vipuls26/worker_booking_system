@@ -60,15 +60,15 @@ onMounted(() => {
 </script>
 
 <template>
-    <main class="min-h-screen bg-blue-50/50 text-gray-900 dark:bg-gray-950 dark:text-white">
-        <aside class="fixed inset-y-0 left-0 hidden w-64 border-r border-blue-100 bg-white p-4 dark:border-white/10 dark:bg-gray-900 lg:block">
+    <main class="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <aside class="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900 lg:block">
             <div class="flex items-center gap-3">
                 <div class="flex size-10 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20 dark:bg-blue-500">
                     <i class="pi pi-briefcase" aria-hidden="true"></i>
                 </div>
                 <div>
-                    <p class="text-sm font-semibold text-gray-900 dark:text-white">Local Worker</p>
-                    <p class="text-xs capitalize text-gray-500 dark:text-gray-400">{{ authStore.role }} workspace</p>
+                    <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">Local Worker</p>
+                    <p class="text-xs capitalize text-slate-500 dark:text-slate-400">{{ authStore.role }} workspace</p>
                 </div>
             </div>
 
@@ -85,7 +85,7 @@ onMounted(() => {
                     v-for="item in navigation"
                     :key="item.path"
                     :to="item.path"
-                    class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
+                    class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                     :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
                     active-class="bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-500"
                 >
@@ -97,11 +97,11 @@ onMounted(() => {
         </aside>
 
         <section class="lg:pl-64">
-            <header class="sticky top-0 z-20 border-b border-blue-100 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-gray-900/95">
+            <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
                 <div class="flex items-start justify-between gap-3 px-4 py-3 sm:items-center sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ authStore.role }}</p>
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{{ authStore.role }}</p>
                             <span
                                 class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
                                 :class="canAccessProtectedFeatures ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'"
@@ -110,13 +110,13 @@ onMounted(() => {
                                 {{ verificationLabel }}
                             </span>
                         </div>
-                        <h1 class="truncate text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">{{ props.title }}</h1>
+                        <h1 class="truncate text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">{{ props.title }}</h1>
                     </div>
 
                     <div class="flex shrink-0 items-center justify-end gap-2 sm:gap-3">
                         <RouterLink
                             :to="dashboardPath"
-                            class="hidden h-10 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10 lg:inline-flex"
+                            class="app-toolbar-button app-accent-button hidden h-10 lg:inline-flex"
                             title="Dashboard"
                         >
                             <i class="pi pi-home" aria-hidden="true"></i>
@@ -126,7 +126,7 @@ onMounted(() => {
                         <ThemeToggle />
                         <button
                             type="button"
-                            class="inline-flex h-10 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10"
+                            class="app-toolbar-button h-10"
                             @click="handleLogout"
                         >
                             <i class="pi pi-sign-out" aria-hidden="true"></i>
@@ -140,7 +140,7 @@ onMounted(() => {
                         v-for="item in navigation"
                         :key="item.path"
                         :to="item.path"
-                        class="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+                        class="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
                         active-class="bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
                     >

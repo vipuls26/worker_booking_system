@@ -3,7 +3,58 @@
 @tailwind utilities;
 
 @layer base {
+    html {
+        @apply bg-slate-100 text-slate-950 dark:bg-slate-950 dark:text-slate-100;
+    }
+
     body {
-        @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-white;
+        @apply min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+    }
+}
+
+@layer components {
+    .app-surface {
+        @apply rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/60 dark:border-white/10 dark:bg-slate-900 dark:shadow-none;
+    }
+
+    .app-muted-surface {
+        @apply border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-950;
+    }
+
+    .app-toolbar-button {
+        @apply inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800;
+    }
+
+    .app-accent-button {
+        @apply border-blue-300 bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:border-blue-700 hover:bg-blue-700 dark:border-blue-400/40 dark:bg-blue-500 dark:hover:bg-blue-400;
+    }
+}
+
+@layer utilities {
+    .page-enter-active,
+    .page-leave-active {
+        @apply motion-safe:transition-all motion-safe:duration-300 motion-safe:ease-out;
+    }
+
+    .page-enter-from,
+    .page-leave-to {
+        @apply motion-safe:translate-y-3 motion-safe:scale-[0.99] motion-safe:opacity-0;
+    }
+
+    .page-enter-to,
+    .page-leave-from {
+        @apply motion-safe:translate-y-0 motion-safe:scale-100 motion-safe:opacity-100;
+    }
+
+    .fade-up-enter-active {
+        @apply motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-out;
+    }
+
+    .fade-up-enter-from {
+        @apply motion-safe:translate-y-4 motion-safe:opacity-0;
+    }
+
+    .fade-up-enter-to {
+        @apply motion-safe:translate-y-0 motion-safe:opacity-100;
     }
 }

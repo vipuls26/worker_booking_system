@@ -1,16 +1,26 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, watch } from 'vue';
 import { RouterView } from 'vue-router';
 import { Toaster } from 'vue-sonner';
 import { initializeTheme } from './composables/useTheme';
 import { useAuthStore } from './stores/auth';
+import { useRealtimeStore } from './stores/realtime';
 
 const authStore = useAuthStore();
+const realtimeStore = useRealtimeStore();
 
-onMounted(() => {
+onMounted(async () => {
     initializeTheme();
-    authStore.bootstrap();
+    await authStore.bootstrap();
+    realtimeStore.sync();
 });
+
+watch(
+    () => [authStore.isAuthenticated, authStore.user?.id],
+    () => {
+        realtimeStore.sync();
+    },
+);
 </script>
 
 <template>

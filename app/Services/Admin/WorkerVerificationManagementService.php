@@ -2,11 +2,14 @@
 
 namespace App\Services\Admin;
 
+use App\Events\VerificationStatusUpdated;
 use App\Models\Booking;
 use App\Models\User;
 use App\Models\WorkerVerification;
 use App\Notifications\BookingWorkflowNotification;
+use App\Notifications\VerificationStatusNotification;
 use App\Services\Audit\AuditLogger;
+use App\Services\Realtime\AdminDashboardBroadcastService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -23,7 +26,10 @@ class WorkerVerificationManagementService
     /**
      * Receive the audit logger so every admin verification decision remains traceable.
      */
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly AdminDashboardBroadcastService $dashboardBroadcasts,
+    ) {}
 
     /**
      * List worker verification requests for admins, with unresolved pending requests first so review work is prioritized.
@@ -90,6 +96,15 @@ class WorkerVerificationManagementService
                 'worker_id' => $verification->user_id,
             ]);
 
+            $this->notifyWorkerAboutVerificationDecision(
+                worker: $worker,
+                verification: $verification,
+                title: 'Verification approved',
+                message: 'Your worker verification was approved. You can now receive booking work.',
+            );
+
+            $this->dashboardBroadcasts->broadcastRefresh();
+
             return $verification->refresh()->load(['user.role', 'verifier.role']);
         });
     }
@@ -155,6 +170,17 @@ class WorkerVerificationManagementService
                 'active_bookings_notified' => $worker ? $this->recordVerificationRemovedForActiveBookings($worker, $admin, $reason) : 0,
             ]);
 
+            $this->notifyWorkerAboutVerificationDecision(
+                worker: $worker,
+                verification: $verification,
+                title: $status === WorkerVerification::STATUS_REJECTED ? 'Verification rejected' : 'Verification update required',
+                message: $status === WorkerVerification::STATUS_REJECTED
+                    ? 'Your verification was rejected. Review the admin reason and submit updated proof.'
+                    : 'An admin requested updated verification details. Review the reason and submit again.',
+            );
+
+            $this->dashboardBroadcasts->broadcastRefresh();
+
             return $verification->refresh()->load([
                 'user' => function ($query): void {
                     $query
@@ -214,5 +240,18 @@ class WorkerVerificationManagementService
             title: 'Worker verification changed',
             message: 'The verification status for your assigned worker changed. Your booking is still active.',
         ));
+    }
+
+    /**
+     * Notify the worker and refresh the signed-in worker session with the latest verification state.
+     */
+    private function notifyWorkerAboutVerificationDecision(?User $worker, WorkerVerification $verification, string $title, string $message): void
+    {
+        if (! $worker instanceof User) {
+            return;
+        }
+
+        $worker->notify(new VerificationStatusNotification($verification, $title, $message));
+        event(new VerificationStatusUpdated($worker));
     }
 }

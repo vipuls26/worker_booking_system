@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, RouterLink, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../../components/common/AppButton.vue';
@@ -386,6 +386,20 @@ function calculateDurationMinutes(startTime, endTime) {
 }
 
 onMounted(load);
+
+watch(
+    () => [
+        needsReschedule.value,
+        assignedRescheduleWorkerId.value,
+        booking.value?.service?.id || null,
+        booking.value?.booking_date || null,
+        booking.value?.start_time || null,
+        booking.value?.end_time || null,
+    ],
+    () => {
+        void loadQuickRescheduleSlots();
+    },
+);
 </script>
 
 <template>

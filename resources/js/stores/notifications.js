@@ -69,5 +69,32 @@ export const useNotificationsStore = defineStore('notifications', {
 
             return response.data;
         },
+
+        addRealtimeNotification(payload) {
+            const notification = {
+                id: payload.id,
+                type: payload.type || 'broadcast',
+                event: payload.event || payload.data?.event || null,
+                title: payload.title || payload.data?.title || 'Notification',
+                message: payload.message || payload.data?.message || '',
+                data: payload.data || payload,
+                url: payload.url || payload.data?.url || null,
+                read_at: payload.read_at || null,
+                is_read: Boolean(payload.read_at),
+                created_at: payload.created_at || new Date().toISOString(),
+            };
+
+            const alreadyExists = this.notifications.some((item) => item.id === notification.id);
+
+            if (alreadyExists) {
+                this.notifications = this.notifications.map((item) => (item.id === notification.id ? notification : item));
+            } else {
+                this.notifications = [notification, ...this.notifications];
+            }
+
+            if (! notification.is_read) {
+                this.unreadCount += 1;
+            }
+        },
     },
 });

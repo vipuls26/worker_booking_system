@@ -12,6 +12,7 @@ use App\Models\WorkerService;
 use App\Notifications\ServiceRequestWorkflowNotification;
 use App\Services\Audit\AuditLogger;
 use App\Services\CommissionSettingService;
+use App\Services\Realtime\AdminDashboardBroadcastService;
 use App\Services\Worker\WorkerScheduleService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -29,6 +30,7 @@ class BookingService
         private readonly AuditLogger $audit,
         private readonly CommissionSettingService $commissionSettings,
         private readonly BookAgainService $bookAgain,
+        private readonly AdminDashboardBroadcastService $dashboardBroadcasts,
     ) {}
 
     /**
@@ -202,6 +204,7 @@ class BookingService
         ]);
 
         $serviceRequestWorker = $serviceRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role']);
+        $this->notifyCustomerAboutWorkerResponse($serviceRequestWorker);
 
         $this->audit->record('service_request_worker.responded', $worker, $serviceRequestWorker, [
             'service_request_id' => $serviceRequestWorker->service_request_id,
@@ -223,21 +226,26 @@ class BookingService
         abort_if($serviceRequest->customer_id !== $customer->id, 404);
 
         return DB::transaction(function () use ($serviceRequest, $customer, $serviceRequestWorkerId): ServiceRequest {
+            $lockedServiceRequest = ServiceRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($serviceRequest->id);
+
             // Customers can only choose a final worker while the request is still open.
-            if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
+            if ($lockedServiceRequest->status !== ServiceRequest::STATUS_OPEN) {
                 throw ValidationException::withMessages(['worker_request_id' => ['This booking is not waiting for worker selection.']]);
             }
 
             // Only accepted worker responses are eligible for customer selection.
-            $serviceRequestWorker = $serviceRequest->workers()
+            $serviceRequestWorker = $lockedServiceRequest->workers()
                 ->with('worker')
+                ->lockForUpdate()
                 ->whereKey($serviceRequestWorkerId)
                 ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
                 ->firstOrFail();
 
-            $this->finalizeWorkerSelection($serviceRequest, $serviceRequestWorker, $customer);
+            $this->finalizeWorkerSelection($lockedServiceRequest, $serviceRequestWorker, $customer);
 
-            return $serviceRequest->refresh()->load($this->serviceRequestRelations());
+            return $lockedServiceRequest->refresh()->load($this->serviceRequestRelations());
         });
     }
 
@@ -262,6 +270,7 @@ class BookingService
             ->load(['customer.role', 'worker.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role']);
 
         event(new BookingStatusChanged($booking, $oldStatus, $status, $actor, $reason));
+        $this->dashboardBroadcasts->broadcastRefresh();
 
         return $booking;
     }
@@ -298,6 +307,9 @@ class BookingService
                 'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
                 'responded_at' => now(),
             ]);
+
+        $serviceRequest->loadMissing(['service', 'customer', 'workers.worker']);
+        $this->notifyWorkersAboutCancelledServiceRequest($serviceRequest);
 
         $this->audit->record('service_request.cancelled', $customer, $serviceRequest, [
             'reason' => $reason,
@@ -464,19 +476,69 @@ class BookingService
         });
     }
 
+    /**
+     * Tell invited workers that the customer cancelled before choosing anyone.
+     */
+    private function notifyWorkersAboutCancelledServiceRequest(ServiceRequest $serviceRequest): void
+    {
+        foreach ($serviceRequest->workers as $serviceRequestWorker) {
+            $serviceRequestWorker->worker?->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequest,
+                event: 'service_request_cancelled',
+                title: 'Booking request cancelled',
+                message: 'The customer cancelled this booking request before selecting a worker.',
+            ));
+        }
+    }
+
+    /**
+     * Tell the customer when a worker responds to the open request queue.
+     */
+    private function notifyCustomerAboutWorkerResponse(ServiceRequestWorker $serviceRequestWorker): void
+    {
+        $customer = $serviceRequestWorker->serviceRequest?->customer;
+
+        if (! $customer) {
+            return;
+        }
+
+        if ($serviceRequestWorker->status === ServiceRequestWorker::STATUS_ACCEPTED) {
+            $customer->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequestWorker->serviceRequest,
+                event: 'service_request_accepted',
+                title: 'Worker accepted your request',
+                message: sprintf('%s is now available for your booking request.', $serviceRequestWorker->worker?->name ?? 'A worker'),
+            ));
+        }
+
+        if ($serviceRequestWorker->status === ServiceRequestWorker::STATUS_REJECTED) {
+            $customer->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequestWorker->serviceRequest,
+                event: 'service_request_rejected',
+                title: 'Worker declined your request',
+                message: sprintf('%s declined your booking request.', $serviceRequestWorker->worker?->name ?? 'A worker'),
+            ));
+        }
+    }
+
     private function finalizeWorkerSelection(ServiceRequest $serviceRequest, ServiceRequestWorker $serviceRequestWorker, User $actor): Booking
     {
+        // Lock the worker row so only one booking confirmation can claim the slot at one time.
+        $lockedWorker = User::query()
+            ->lockForUpdate()
+            ->find($serviceRequestWorker->worker_id);
+
         $durationMinutes = $this->durationMinutes([
             'booking_date' => $serviceRequest->requested_date->toDateString(),
             'start_time' => $serviceRequest->start_time,
             'end_time' => $serviceRequest->end_time,
         ]);
 
-        $this->ensureWorkerCanReceiveBooking($serviceRequestWorker->worker, 'worker_request_id');
+        $this->ensureWorkerCanReceiveBooking($lockedWorker, 'worker_request_id');
 
         // A selected worker must still be eligible and free at the final confirmation moment.
-        if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
-            worker: $serviceRequestWorker->worker,
+        if (! $lockedWorker || ! $this->availability->isWorkerAvailable(
+            worker: $lockedWorker,
             date: $serviceRequest->requested_date->toDateString(),
             startTime: $serviceRequest->start_time,
             durationMinutes: $durationMinutes,
@@ -560,6 +622,7 @@ class BookingService
         ]);
 
         $this->moveOverlappingPendingRequestsToAwaitingReschedule($booking, $serviceRequestWorker->id);
+        $this->dashboardBroadcasts->broadcastRefresh();
 
         return $booking;
     }
@@ -780,19 +843,6 @@ class BookingService
             'selectedWorker.role',
             'service',
             'latestPayment',
-            'bookingRequests.worker' => fn ($query) => $query
-                ->with([
-                    'role',
-                    'workerProfile',
-                    'workerServices' => fn ($query) => $query
-                        ->where('is_active', true)
-                        ->where('approval_status', 'approved')
-                        ->whereHas('service', fn ($query) => $query->where('is_active', true))
-                        ->with('service:id,name,slug,icon,is_active')
-                        ->orderBy('price'),
-                ])
-                ->withAvg('workerReviews as rating_average', 'rating')
-                ->withCount('workerReviews as reviews_count'),
             'activities.actor.role',
             'review.customer.role',
             'workerReview.worker.role',

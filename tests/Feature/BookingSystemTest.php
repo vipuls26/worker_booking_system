@@ -521,6 +521,106 @@ class BookingSystemTest extends TestCase
         ]);
     }
 
+    public function test_customer_is_notified_when_worker_accepts_multi_worker_request(): void
+    {
+        Notification::fake();
+
+        [$customer, $worker, $service] = $this->bookingActors();
+        $secondWorker = User::factory()->for(Role::where('slug', 'worker')->firstOrFail())->create();
+
+        WorkerService::factory()->create([
+            'worker_id' => $secondWorker->id,
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingFixed,
+            'price' => 550,
+            'is_active' => true,
+        ]);
+
+        WorkerSchedule::factory()->create([
+            'worker_id' => $secondWorker->id,
+            'day_of_week' => 1,
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+        ]);
+
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'description' => 'Need a technician.',
+            'status' => ServiceRequest::STATUS_OPEN,
+        ]);
+
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+            'quoted_price' => 500,
+        ]);
+
+        ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $secondWorker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+            'quoted_price' => 550,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ])->assertOk();
+
+        Notification::assertSentTo(
+            $customer,
+            ServiceRequestWorkflowNotification::class,
+            function (ServiceRequestWorkflowNotification $notification) use ($customer): bool {
+                return $notification->toArray($customer)['event'] === 'service_request_accepted';
+            }
+        );
+    }
+
+    public function test_customer_cancelling_open_service_request_notifies_related_workers(): void
+    {
+        Notification::fake();
+
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'description' => 'Need a technician.',
+            'status' => ServiceRequest::STATUS_OPEN,
+        ]);
+
+        ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/cancel", [
+            'cancelled_reason' => 'No longer needed.',
+        ])->assertOk();
+
+        Notification::assertSentTo(
+            $worker,
+            ServiceRequestWorkflowNotification::class,
+            function (ServiceRequestWorkflowNotification $notification) use ($worker): bool {
+                return $notification->toArray($worker)['event'] === 'service_request_cancelled';
+            }
+        );
+    }
+
     public function test_overlapping_pending_requests_move_to_awaiting_reschedule_after_worker_accepts(): void
     {
         Notification::fake();

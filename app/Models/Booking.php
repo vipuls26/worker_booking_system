@@ -106,14 +106,6 @@ class Booking extends Model
     }
 
     /**
-     * @return HasMany<BookingRequest, $this>
-     */
-    public function bookingRequests(): HasMany
-    {
-        return $this->hasMany(BookingRequest::class);
-    }
-
-    /**
      * @return HasMany<BookingActivity, $this>
      */
     public function activities(): HasMany

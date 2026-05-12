@@ -66,7 +66,7 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking requests retrieved',
             'data' => [
-                'booking_requests' => ServiceRequestWorkerResource::collection($bookingRequests),
+                'worker_requests' => ServiceRequestWorkerResource::collection($bookingRequests),
                 'meta' => PaginationMeta::fromPaginator($bookingRequests),
             ],
         ]);
@@ -81,7 +81,7 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking request retrieved',
             'data' => [
-                'booking_request' => new ServiceRequestWorkerResource(
+                'worker_request' => new ServiceRequestWorkerResource(
                     $bookingRequest->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']),
                 ),
             ],
@@ -95,7 +95,7 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Booking request updated',
             'data' => [
-                'booking_request' => new ServiceRequestWorkerResource(
+                'worker_request' => new ServiceRequestWorkerResource(
                     $this->bookings->respondToRequest(
                         serviceRequestWorker: $bookingRequest,
                         worker: $request->user(),

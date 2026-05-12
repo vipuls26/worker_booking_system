@@ -41,7 +41,7 @@ class ServiceRequestResource extends JsonResource
             'total_amount' => $booking?->quoted_amount ?? $this->estimated_amount,
             'estimated_amount' => $this->estimated_amount,
             'status' => $this->status,
-            'requests' => ServiceRequestWorkerResource::collection($this->whenLoaded('workers')),
+            'worker_requests' => ServiceRequestWorkerResource::collection($this->whenLoaded('workers')),
             'timeline' => BookingActivityResource::collection($booking && $booking->relationLoaded('activities') ? $booking->activities : collect()),
             'review' => $booking && $booking->relationLoaded('review') ? new ReviewResource($booking->review) : null,
             'worker_review' => $booking && $booking->relationLoaded('workerReview') ? new ReviewResource($booking->workerReview) : null,

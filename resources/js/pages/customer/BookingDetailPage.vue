@@ -68,11 +68,11 @@ const paymentButtonLabel = computed(() => {
 
     return 'Pay now';
 });
-const acceptedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'accepted') || []);
-const selectedRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'selected') || []);
+const acceptedRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'accepted') || []);
+const selectedRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'selected') || []);
 const comparisonRequests = computed(() => [...selectedRequests.value, ...acceptedRequests.value]);
-const otherRequests = computed(() => booking.value?.requests?.filter((request) => !['accepted', 'selected'].includes(request.status)) || []);
-const awaitingRescheduleRequests = computed(() => booking.value?.requests?.filter((request) => request.status === 'awaiting_reschedule') || []);
+const otherRequests = computed(() => booking.value?.worker_requests?.filter((request) => !['accepted', 'selected'].includes(request.status)) || []);
+const awaitingRescheduleRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'awaiting_reschedule') || []);
 const assignedRescheduleWorkerId = computed(() => awaitingRescheduleRequests.value[0]?.worker_id || null);
 const needsReschedule = computed(() => booking.value?.status === 'open' && awaitingRescheduleRequests.value.length > 0 && !officialBooking.value);
 const bookingDisplayStatus = computed(() => (needsReschedule.value ? 'awaiting_reschedule' : (booking.value?.booking?.status || booking.value?.status || 'open')));
@@ -125,7 +125,7 @@ async function cancel() {
 
 async function selectWorker(bookingRequest) {
     try {
-        await bookingsStore.selectWorker(route.params.id, { booking_request_id: bookingRequest.id });
+        await bookingsStore.selectWorker(route.params.id, { worker_request_id: bookingRequest.id });
         toast.success('Worker selected');
     } catch (error) {
         toast.error(error.response?.data?.message || 'Unable to select worker');
@@ -535,12 +535,12 @@ onMounted(load);
                 </p>
             </section>
 
-            <section v-if="booking.requests?.length" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <section v-if="booking.worker_requests?.length" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ booking.requests.length > 1 ? 'Compare accepted workers' : 'Worker response' }}</h3>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ booking.worker_requests.length > 1 ? 'Compare accepted workers' : 'Worker response' }}</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {{ booking.requests.length > 1 ? 'Choose one accepted worker to create the official booking.' : 'This request was sent to one worker. Confirm them after they accept.' }}
+                            {{ booking.worker_requests.length > 1 ? 'Choose one accepted worker to create the official booking.' : 'This request was sent to one worker. Confirm them after they accept.' }}
                         </p>
                     </div>
                     <span v-if="booking.status === 'open'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
@@ -597,7 +597,7 @@ onMounted(load);
                                     @click="selectWorker(request)"
                                 >
                                     <i class="pi pi-check" aria-hidden="true"></i>
-                                    {{ booking.requests.length > 1 ? 'Select worker' : 'Confirm this worker' }}
+                                    {{ booking.worker_requests.length > 1 ? 'Select worker' : 'Confirm this worker' }}
                                 </button>
                             </div>
                         </div>

@@ -1,21 +1,32 @@
 <script setup>
-import { useTheme } from '../../composables/useTheme';
+import { computed } from 'vue';
+import { useThemeStore } from '../../stores/themeStore';
 
-const { isDark, icon, label, toggleTheme } = useTheme();
+const themeStore = useThemeStore();
+
+const iconClass = computed(() => (themeStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'));
 </script>
 
 <template>
     <button
         type="button"
-        :aria-label="label"
-        class="relative inline-flex h-10 w-16 shrink-0 items-center rounded-md border border-blue-200 bg-blue-50 px-1 text-blue-700 shadow-sm transition-colors duration-300 hover:bg-blue-100 dark:border-white/10 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-white/10"
-        @click="toggleTheme"
+        :aria-label="themeStore.themeLabel"
+        class="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-gray-300 bg-white text-gray-700 shadow-sm transition-all duration-500 ease-in-out hover:scale-110 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:text-yellow-300"
+        @click="themeStore.toggleTheme"
     >
-        <span
-            class="flex size-8 items-center justify-center rounded-md bg-blue-600 text-white shadow-sm shadow-blue-600/20 transition-transform duration-300 ease-in-out dark:bg-blue-500 dark:text-white"
-            :class="isDark ? 'translate-x-6' : 'translate-x-0'"
+        <Transition
+            mode="out-in"
+            enter-active-class="transition-all duration-300 ease-out"
+            leave-active-class="transition-all duration-300 ease-in absolute"
+            enter-from-class="opacity-0 rotate-90 scale-50"
+            enter-to-class="opacity-100 rotate-0 scale-100"
+            leave-from-class="opacity-100 rotate-0 scale-100"
+            leave-to-class="opacity-0 -rotate-90 scale-50"
         >
-            <i :class="['pi text-sm', icon]" aria-hidden="true"></i>
-        </span>
+            <i :key="iconClass" :class="iconClass" class="text-lg" aria-hidden="true"></i>
+        </Transition>
     </button>
 </template>
+
+
+

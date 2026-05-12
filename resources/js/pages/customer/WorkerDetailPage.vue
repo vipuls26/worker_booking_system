@@ -13,6 +13,13 @@ import { useAuthStore } from '../../stores/auth';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 import { useCustomerWorkersStore } from '../../stores/customer/workers';
 
+function localDateString() {
+    const today = new Date();
+    const timezoneOffsetInMilliseconds = today.getTimezoneOffset() * 60 * 1000;
+
+    return new Date(today.getTime() - timezoneOffsetInMilliseconds).toISOString().slice(0, 10);
+}
+
 const route = useRoute();
 const router = useRouter();
 const workersStore = useCustomerWorkersStore();
@@ -23,7 +30,7 @@ const worker = computed(() => workersStore.worker);
 const form = reactive({
     source_booking_id: '',
     service_id: '',
-    booking_date: new Date().toISOString().slice(0, 10),
+    booking_date: localDateString(),
     duration_minutes: 60,
     start_time: '',
     end_time: '',
@@ -41,6 +48,13 @@ const durationOptions = computed(() => {
     const minimumHours = selectedWorkerService.value?.pricing_type === 'hourly'
         ? Number(selectedWorkerService.value.minimum_hours || 1)
         : 1;
+
+    if (selectedWorkerService.value?.pricing_type === 'hourly') {
+        return [{
+            id: minimumHours * 60,
+            name: `${minimumHours} ${minimumHours === 1 ? 'hour' : 'hours'}`,
+        }];
+    }
 
     return [
         minimumHours,
@@ -229,7 +243,7 @@ async function refreshAvailability(options = {}) {
 onMounted(async () => {
     try {
         await workersStore.fetchWorker(route.params.id, {
-            available_date: new Date().toISOString().slice(0, 10),
+            available_date: localDateString(),
         });
         await workersStore.fetchWorkerReviews(route.params.id);
         await authStore.refreshUser();
@@ -328,7 +342,7 @@ watch(
                             <div class="sm:col-span-2">
                                 <FormSelect id="slot_service" v-model="form.service_id" label="Service" :options="serviceOptions" :error="errors.service_id" />
                             </div>
-                            <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :error="errors.booking_date" />
+                            <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :min="localDateString()" :error="errors.booking_date" />
                             <div>
                                 <p class="block text-sm font-medium text-gray-700 dark:text-gray-200">Duration</p>
                                 <div class="mt-1 grid grid-cols-2 gap-2">
@@ -357,7 +371,7 @@ watch(
                                 <span>
                                     ₹{{ selectedWorkerService.price }}{{ selectedWorkerService.pricing_type === 'hourly' ? '/hr' : '' }}
                                     <template v-if="selectedWorkerService.pricing_type === 'hourly'">
-                                        · Min {{ selectedWorkerService.minimum_hours || 1 }}h
+                                        · Required {{ selectedWorkerService.minimum_hours || 1 }}h
                                     </template>
                                 </span>
                             </div>

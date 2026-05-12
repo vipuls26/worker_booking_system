@@ -250,6 +250,9 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:worker'])->prefix('worke
         // Show one booking assigned to the worker.
         Route::get('bookings/{booking}', [WorkerBookingController::class, 'show']);
 
+        // Let the assigned worker start the booking only when the scheduled time has arrived.
+        Route::patch('bookings/{booking}/start', [WorkerBookingController::class, 'start'])->middleware('throttle:booking-actions');
+
         // Move a worker booking through the work status workflow.
         Route::patch('bookings/{booking}/status', [WorkerBookingController::class, 'updateStatus'])->middleware('throttle:booking-actions');
 
@@ -300,5 +303,8 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
 
         // Cancel an open customer booking request.
         Route::patch('bookings/{booking}/cancel', [CustomerBookingController::class, 'cancel'])->middleware('throttle:booking-actions');
+
+        // Reschedule a request that is waiting for a new slot.
+        Route::patch('bookings/{booking}/reschedule', [CustomerBookingController::class, 'reschedule'])->middleware('throttle:booking-actions');
     });
 });

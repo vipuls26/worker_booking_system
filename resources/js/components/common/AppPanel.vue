@@ -15,7 +15,7 @@ defineProps({
     <component
         :is="as"
         :class="[
-            'rounded-lg bg-white shadow-sm ring-1 ring-blue-100 dark:bg-gray-900 dark:ring-white/10',
+            'app-surface',
             padded ? 'p-4 sm:p-5' : '',
         ]"
     >

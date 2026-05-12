@@ -1,34 +1,22 @@
-import { computed, ref } from 'vue';
-
-const isDark = ref(false);
-
-function preferredDarkMode() {
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-}
-
-function applyTheme(value) {
-    isDark.value = value;
-    document.documentElement.classList.toggle('dark', value);
-    localStorage.setItem('theme', value ? 'dark' : 'light');
-}
+import { computed } from 'vue';
+import { useThemeStore } from '../stores/themeStore';
 
 export function initializeTheme() {
-    const storedTheme = localStorage.getItem('theme');
-    applyTheme(storedTheme ? storedTheme === 'dark' : preferredDarkMode());
+    const themeStore = useThemeStore();
+
+    themeStore.initializeTheme();
 }
 
 export function useTheme() {
-    const icon = computed(() => (isDark.value ? 'pi-moon' : 'pi-sun'));
-    const label = computed(() => (isDark.value ? 'Switch to light mode' : 'Switch to dark mode'));
-
-    function toggleTheme() {
-        applyTheme(!isDark.value);
-    }
+    const themeStore = useThemeStore();
+    const isDark = computed(() => themeStore.darkMode);
+    const icon = computed(() => (themeStore.darkMode ? 'pi-sun' : 'pi-moon'));
+    const label = computed(() => themeStore.themeLabel);
 
     return {
         isDark,
         icon,
         label,
-        toggleTheme,
+        toggleTheme: themeStore.toggleTheme,
     };
 }

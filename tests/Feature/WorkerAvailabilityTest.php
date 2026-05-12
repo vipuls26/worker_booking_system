@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\Service;
 use App\Models\User;
 use App\Models\WorkerSchedule;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -100,6 +101,30 @@ class WorkerAvailabilityTest extends TestCase
             ->assertJsonPath('data.slots.1.available', false)
             ->assertJsonPath('data.slots.2.time', '11:00')
             ->assertJsonPath('data.slots.2.available', true);
+    }
+
+    public function test_availability_slots_offer_later_today_start_times_after_current_time(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-12 11:33:00');
+
+        try {
+            Sanctum::actingAs($worker = $this->workerUser());
+
+            WorkerSchedule::factory()->create([
+                'worker_id' => $worker->id,
+                'day_of_week' => 2,
+                'start_time' => '09:00',
+                'end_time' => '18:00',
+            ]);
+
+            $this->getJson('/api/worker/availability?date=2026-05-12&slot_minutes=120')
+                ->assertOk()
+                ->assertJsonPath('data.slots.0.time', '12:00')
+                ->assertJsonPath('data.slots.0.end_time', '14:00')
+                ->assertJsonPath('data.slots.0.available', true);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 
     public function test_customer_cannot_access_worker_availability_management(): void

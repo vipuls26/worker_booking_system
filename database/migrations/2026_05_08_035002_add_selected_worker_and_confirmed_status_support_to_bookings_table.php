@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const WorkerScheduleIndexName = 'booking_worker_schedule_idx';
+
     /**
      * Run the migrations.
      */
@@ -18,7 +20,10 @@ return new class extends Migration
                 ->constrained('users')
                 ->nullOnDelete();
 
-            $table->index(['selected_worker_id', 'booking_date', 'start_time']);
+            $table->index(
+                ['selected_worker_id', 'booking_date', 'start_time'],
+                self::WorkerScheduleIndexName,
+            );
         });
     }
 
@@ -28,8 +33,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('bookings', function (Blueprint $table): void {
-            $table->dropIndex(['selected_worker_id', 'booking_date', 'start_time']);
-            $table->dropConstrainedForeignId('selected_worker_id');
+            $table->dropForeign(['selected_worker_id']);
+            $table->dropIndex(self::WorkerScheduleIndexName);
+            $table->dropColumn('selected_worker_id');
         });
     }
 };

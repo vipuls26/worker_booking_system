@@ -20,6 +20,10 @@ export function cancelBooking(id, payload = {}) {
     return http.patch(`/customer/bookings/${id}/cancel`, payload);
 }
 
+export function rescheduleBooking(id, payload) {
+    return http.patch(`/customer/bookings/${id}/reschedule`, payload);
+}
+
 export function selectBookingWorker(id, payload) {
     return http.patch(`/customer/bookings/${id}/select-worker`, payload);
 }

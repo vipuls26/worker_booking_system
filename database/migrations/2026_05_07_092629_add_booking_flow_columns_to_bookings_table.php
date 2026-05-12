@@ -26,6 +26,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('bookings', function (Blueprint $table): void {
+            $table->index('worker_id');
             $table->dropIndex(['worker_id', 'booking_date', 'start_time']);
             $table->dropColumn(['start_time', 'end_time', 'issue_description', 'rejection_reason']);
         });

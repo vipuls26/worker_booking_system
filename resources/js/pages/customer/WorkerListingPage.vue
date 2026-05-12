@@ -15,6 +15,30 @@ import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 import { useCustomerWorkersStore } from '../../stores/customer/workers';
 
+function localDateString() {
+    const today = new Date();
+    const timezoneOffsetInMilliseconds = today.getTimezoneOffset() * 60 * 1000;
+
+    return new Date(today.getTime() - timezoneOffsetInMilliseconds).toISOString().slice(0, 10);
+}
+
+function localTimeString() {
+    const now = new Date();
+
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function roundTimeUpToFiveMinutes(time) {
+    const [hours, minutes] = time.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes;
+    const roundedMinutes = Math.ceil(totalMinutes / 5) * 5;
+    const boundedMinutes = Math.min(roundedMinutes, 23 * 60 + 55);
+    const nextHours = String(Math.floor(boundedMinutes / 60)).padStart(2, '0');
+    const nextMinutes = String(boundedMinutes % 60).padStart(2, '0');
+
+    return `${nextHours}:${nextMinutes}`;
+}
+
 const router = useRouter();
 const route = useRoute();
 const workersStore = useCustomerWorkersStore();
@@ -22,6 +46,10 @@ const bookingsStore = useCustomerBookingsStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
 const showAdvancedFilters = ref(false);
 const filtersReady = ref(false);
+const frontendErrors = reactive({
+    booking_date: [],
+    start_time: [],
+});
 
 const requestForm = reactive({
     service_id: '',
@@ -34,6 +62,12 @@ const requestForm = reactive({
 });
 
 const canSendRequest = computed(() => requestForm.service_id && requestForm.booking_date && requestForm.start_time && requestForm.duration_minutes && requestForm.address && requestForm.issue_description);
+const minimumBookingDate = computed(() => localDateString());
+const minimumBookingTime = computed(() => requestForm.booking_date === minimumBookingDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
+const minimumAvailableDate = computed(() => localDateString());
+const minimumAvailableTime = computed(() => workersStore.filters.available_date === minimumAvailableDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
+const requestStartTimeInputKey = computed(() => `${requestForm.booking_date || 'no-date'}:${minimumBookingTime.value || 'any-time'}`);
+const availableTimeInputKey = computed(() => `${workersStore.filters.available_date || 'no-date'}:${minimumAvailableTime.value || 'any-time'}`);
 const selectedService = computed(() => workersStore.serviceOptions.find((service) => String(service.id) === String(workersStore.filters.service_id)));
 const requestService = computed(() => workersStore.serviceOptions.find((service) => String(service.id) === String(requestForm.service_id)));
 const requestSlotLabel = computed(() => {
@@ -92,7 +126,7 @@ const quickFilters = [
     { label: 'Top rated', icon: 'pi-star-fill', payload: { min_rating: '4', sort: 'rating' } },
     { label: 'Lowest price', icon: 'pi-wallet', payload: { sort: 'price_low' } },
     { label: 'Experienced', icon: 'pi-briefcase', payload: { sort: 'experience' } },
-    { label: 'Today', icon: 'pi-calendar', payload: { available_date: new Date().toISOString().slice(0, 10) } },
+    { label: 'Today', icon: 'pi-calendar', payload: { available_date: localDateString() } },
 ];
 
 const timeShortcuts = [
@@ -100,6 +134,13 @@ const timeShortcuts = [
     { label: 'Noon', start: '12:00', end: '14:00' },
     { label: 'Evening', start: '16:00', end: '18:00' },
     { label: 'Late', start: '18:00', end: '20:00' },
+];
+const visibleTimeShortcuts = computed(() => timeShortcuts.filter((slot) => ! minimumBookingTime.value || slot.start >= minimumBookingTime.value));
+const timeAdjustmentOptions = [
+    { label: '15 min earlier', minutes: -15 },
+    { label: '10 min earlier', minutes: -10 },
+    { label: '10 min later', minutes: 10 },
+    { label: '15 min later', minutes: 15 },
 ];
 
 async function load(page = 1) {
@@ -141,8 +182,9 @@ function resetFilters() {
 function dateValueFromNow(days) {
     const date = new Date();
     date.setDate(date.getDate() + days);
+    const timezoneOffsetInMilliseconds = date.getTimezoneOffset() * 60 * 1000;
 
-    return date.toISOString().slice(0, 10);
+    return new Date(date.getTime() - timezoneOffsetInMilliseconds).toISOString().slice(0, 10);
 }
 
 function selectDate(value) {
@@ -151,6 +193,12 @@ function selectDate(value) {
 }
 
 function selectTimeSlot(slot) {
+    if (minimumBookingTime.value && slot.start < minimumBookingTime.value) {
+        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+        return;
+    }
+
     requestForm.start_time = slot.start;
     requestForm.duration_minutes = minutesBetween(slot.start, slot.end);
     syncRequestEndTime();
@@ -160,6 +208,23 @@ function selectTimeSlot(slot) {
 
 function selectRequestDuration(minutes) {
     requestForm.duration_minutes = minutes;
+    syncRequestEndTime();
+}
+
+function adjustRequestStartTime(minutes) {
+    if (! requestForm.start_time) {
+        return;
+    }
+
+    const adjustedTime = addMinutes(requestForm.start_time, minutes);
+
+    if (minimumBookingTime.value && adjustedTime < minimumBookingTime.value) {
+        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+        return;
+    }
+
+    requestForm.start_time = adjustedTime;
     syncRequestEndTime();
 }
 
@@ -176,7 +241,8 @@ function syncRequestEndTime() {
 
 function addMinutes(time, minutes) {
     const [hours, currentMinutes] = time.split(':').map(Number);
-    const totalMinutes = (hours * 60 + currentMinutes + minutes) % 1440;
+    const minutesPerDay = 1440;
+    const totalMinutes = ((hours * 60 + currentMinutes + minutes) % minutesPerDay + minutesPerDay) % minutesPerDay;
     const nextHours = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
     const nextMinutes = String(totalMinutes % 60).padStart(2, '0');
 
@@ -200,9 +266,39 @@ function applyRouteFilters() {
     });
 }
 
+function clearFrontendErrors() {
+    frontendErrors.booking_date = [];
+    frontendErrors.start_time = [];
+}
+
+function validateRequestSchedule() {
+    clearFrontendErrors();
+
+    // Customers should not be able to choose a day that has already passed.
+    if (requestForm.booking_date && requestForm.booking_date < minimumBookingDate.value) {
+        frontendErrors.booking_date = ['Please choose today or a future date.'];
+
+        return false;
+    }
+
+    // Same-day requests must start now or later so workers are not asked for expired slots.
+    if (requestForm.booking_date === minimumBookingDate.value && requestForm.start_time && requestForm.start_time < minimumBookingTime.value) {
+        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+        return false;
+    }
+
+    return true;
+}
+
 async function sendRequest() {
     clearApiErrors();
+    clearFrontendErrors();
     syncRequestEndTime();
+
+    if (! validateRequestSchedule()) {
+        return;
+    }
 
     try {
         const response = await bookingsStore.create(requestForm);
@@ -248,15 +344,64 @@ watch(
 );
 
 watch(
-    () => requestForm.booking_date,
-    (bookingDate) => {
-        workersStore.filters.available_date = bookingDate || '';
+    () => workersStore.filters.available_date,
+    (availableDate) => {
+        if (availableDate === minimumAvailableDate.value && workersStore.filters.available_time && workersStore.filters.available_time < minimumAvailableTime.value) {
+            workersStore.filters.available_time = '';
+        }
     },
 );
 
 watch(
-    () => [requestForm.start_time, requestForm.duration_minutes],
-    syncRequestEndTime,
+    () => workersStore.filters.available_time,
+    (availableTime) => {
+        if (workersStore.filters.available_date === minimumAvailableDate.value && availableTime && availableTime < minimumAvailableTime.value) {
+            workersStore.filters.available_time = '';
+        }
+    },
+);
+
+watch(
+    () => requestForm.booking_date,
+    (bookingDate) => {
+        workersStore.filters.available_date = bookingDate || '';
+        frontendErrors.booking_date = [];
+
+        if (bookingDate === minimumBookingDate.value && requestForm.start_time && requestForm.start_time < minimumBookingTime.value) {
+            requestForm.start_time = '';
+            requestForm.end_time = '';
+            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+        }
+    },
+);
+
+watch(
+    () => requestForm.start_time,
+    (startTime) => {
+        if (! startTime) {
+            frontendErrors.start_time = [];
+
+            return;
+        }
+
+        if (requestForm.booking_date === minimumBookingDate.value && startTime < minimumBookingTime.value) {
+            requestForm.start_time = '';
+            requestForm.end_time = '';
+            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+            return;
+        }
+
+        frontendErrors.start_time = [];
+        syncRequestEndTime();
+    },
+);
+
+watch(
+    () => requestForm.duration_minutes,
+    () => {
+        syncRequestEndTime();
+    },
 );
 
 onMounted(async () => {
@@ -274,17 +419,19 @@ onMounted(async () => {
 <template>
     <DashboardLayout title="Find Workers">
         <div class="space-y-4 sm:space-y-5">
-            <section class="rounded-lg bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="border-b border-gray-200 p-4 dark:border-white/10 sm:p-5">
+            <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+                <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-slate-900 dark:shadow-none">
+                <div class="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.10),_transparent_48%),linear-gradient(to_bottom,_rgba(248,250,252,1),_rgba(255,255,255,1))] p-4 dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_48%),linear-gradient(to_bottom,_rgba(15,23,42,0.9),_rgba(15,23,42,1))] sm:p-5">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Find workers</p>
-                            <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">Pick a service and refine only when needed.</h2>
+                            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Find workers</p>
+                            <h2 class="mt-1 text-lg font-semibold tracking-tight text-slate-900 dark:text-white sm:text-2xl">Pick a service and refine only when needed.</h2>
+                            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">Browse verified local workers, narrow by city or budget, and send one request that matches the job window you need.</p>
                         </div>
                         <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
                             <button
                                 type="button"
-                                class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                                class="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                                 @click="showAdvancedFilters = !showAdvancedFilters"
                             >
                                 <i class="pi pi-sliders-h" aria-hidden="true"></i>
@@ -297,7 +444,7 @@ onMounted(async () => {
                     </div>
 
                     <div v-if="activeFilterLabels.length" class="mt-4 flex flex-wrap gap-2">
-                        <span v-for="label in activeFilterLabels" :key="label" class="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-gray-200">
+                        <span v-for="label in activeFilterLabels" :key="label" class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
                             {{ label }}
                         </span>
                         <button type="button" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10" @click="resetFilters">
@@ -312,17 +459,17 @@ onMounted(async () => {
                             v-for="service in workersStore.serviceOptions.slice(0, 8)"
                             :key="service.id"
                             type="button"
-                            class="group flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/30 sm:min-w-40 sm:gap-3 sm:p-3"
+                            class="group flex min-w-0 items-center gap-2 rounded-2xl border p-2.5 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/30 sm:min-w-40 sm:gap-3 sm:p-3"
                             :class="String(workersStore.filters.service_id) === String(service.id)
                                 ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 dark:border-blue-400 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-400'
-                                : 'border-gray-200 bg-gray-50 text-gray-900 hover:border-gray-300 hover:bg-white dark:border-white/10 dark:bg-gray-900 dark:text-white dark:hover:border-white/20 dark:hover:bg-gray-800'"
+                                : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300 hover:bg-white dark:border-white/10 dark:bg-slate-950 dark:text-white dark:hover:border-white/20 dark:hover:bg-slate-800'"
                             @click="selectService(service)"
                         >
                             <span
                                 class="inline-flex size-8 shrink-0 items-center justify-center rounded-md transition sm:size-9"
                                 :class="String(workersStore.filters.service_id) === String(service.id)
                                     ? 'bg-white/20 text-white'
-                                    : 'bg-white text-gray-700 ring-1 ring-gray-200 dark:bg-white/10 dark:text-gray-200 dark:ring-white/10'"
+                                    : 'bg-white text-slate-700 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10'"
                             >
                                 <i :class="['pi', serviceIcon(service)]" aria-hidden="true"></i>
                             </span>
@@ -338,7 +485,7 @@ onMounted(async () => {
                             v-for="filter in quickFilters"
                             :key="filter.label"
                             type="button"
-                            class="inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                            class="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800"
                             @click="applyQuickFilter(filter)"
                         >
                             <i :class="['pi', filter.icon]" aria-hidden="true"></i>
@@ -398,12 +545,12 @@ onMounted(async () => {
                     <div class="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_180px_220px]">
                         <label class="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:p-4">
                             <span class="text-sm font-semibold text-gray-900 dark:text-white">Available date</span>
-                            <input v-model="workersStore.filters.available_date" type="date" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 dark:text-white">
+                            <input v-model="workersStore.filters.available_date" type="date" :min="minimumAvailableDate" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 dark:text-white">
                         </label>
 
                         <label class="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:p-4">
                             <span class="text-sm font-semibold text-gray-900 dark:text-white">Available time</span>
-                            <input v-model="workersStore.filters.available_time" type="time" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 dark:text-white">
+                            <input :key="availableTimeInputKey" v-model="workersStore.filters.available_time" type="time" :min="minimumAvailableTime" :disabled="!workersStore.filters.available_date" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-white dark:disabled:text-gray-500">
                         </label>
 
                         <FormSelect id="worker_search_duration" v-model="workersStore.filters.slot_minutes" label="Duration" :options="durationOptions" />
@@ -416,9 +563,11 @@ onMounted(async () => {
                         </label>
                     </div>
                 </div>
-            </section>
+                </section>
+            </Transition>
 
-            <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 sm:p-5">
+            <Transition appear enter-active-class="fade-up-enter-active delay-100" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+                <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 sm:p-5">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm font-medium text-blue-600 dark:text-blue-300">Auto-match request</p>
@@ -470,8 +619,26 @@ onMounted(async () => {
                         </div>
 
                         <div class="mt-4 grid gap-4 md:grid-cols-2">
-                            <FormInput id="request_booking_date" v-model="requestForm.booking_date" label="Date" type="date" :error="errors.booking_date" />
-                            <FormInput id="request_start_time" v-model="requestForm.start_time" label="Start time" type="time" :error="errors.start_time" />
+                            <FormInput id="request_booking_date" v-model="requestForm.booking_date" label="Date" type="date" :min="minimumBookingDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
+                            <FormInput :key="requestStartTimeInputKey" id="request_start_time" v-model="requestForm.start_time" label="Start time" type="time" :min="minimumBookingTime" :disabled="!requestForm.booking_date" step="300" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
+                        </div>
+
+                        <div class="mt-3">
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="adjustment in timeAdjustmentOptions"
+                                    :key="adjustment.label"
+                                    type="button"
+                                    class="inline-flex min-h-10 items-center justify-center rounded-full border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-100/70 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/20 dark:bg-gray-950 dark:text-blue-200 dark:hover:bg-blue-500/10"
+                                    :disabled="!requestForm.start_time"
+                                    @click="adjustRequestStartTime(adjustment.minutes)"
+                                >
+                                    {{ adjustment.label }}
+                                </button>
+                            </div>
+                            <p class="mt-2 text-xs text-blue-700 dark:text-blue-200">
+                                Need a little flexibility? Pick a nearby time here or type the exact start time manually.
+                            </p>
                         </div>
 
                         <div class="mt-4">
@@ -496,7 +663,7 @@ onMounted(async () => {
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Popular slots</p>
                             <div class="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                                 <button
-                                    v-for="slot in timeShortcuts"
+                                    v-for="slot in visibleTimeShortcuts"
                                     :key="slot.label"
                                     type="button"
                                     class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition"
@@ -509,6 +676,9 @@ onMounted(async () => {
                                     {{ slot.label }}
                                 </button>
                             </div>
+                            <p v-if="requestForm.booking_date === minimumBookingDate && visibleTimeShortcuts.length === 0" class="mt-2 text-xs text-amber-700 dark:text-amber-200">
+                                No preset slots are left for today. Please choose a later start time.
+                            </p>
                         </div>
 
                         <div class="mt-4 rounded-lg border border-white bg-white p-4 text-sm text-gray-700 shadow-sm dark:border-blue-500/20 dark:bg-gray-950 dark:text-gray-200">
@@ -553,25 +723,30 @@ onMounted(async () => {
                         </div>
                     </div>
                 </form>
-            </section>
+                </section>
+            </Transition>
 
-            <div v-if="workersStore.loading" class="grid gap-4 lg:grid-cols-2">
-                <SkeletonList :count="4" actions />
-            </div>
+            <Transition appear enter-active-class="fade-up-enter-active delay-150" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+                <div>
+                    <div v-if="workersStore.loading" class="grid gap-4 lg:grid-cols-2">
+                        <SkeletonList :count="4" actions />
+                    </div>
 
-            <div v-else-if="workersStore.workers.length === 0" class="rounded-lg bg-white p-8 text-center text-sm text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-white/10">
-                No workers matched your filters.
-            </div>
+                    <div v-else-if="workersStore.workers.length === 0" class="rounded-lg bg-white p-8 text-center text-sm text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-white/10">
+                        No workers matched your filters.
+                    </div>
 
-            <div v-else class="grid gap-4 lg:grid-cols-2">
-                <WorkerCard
-                    v-for="worker in workersStore.workers"
-                    :key="worker.id"
-                    :worker="worker"
-                />
-            </div>
+                    <div v-else class="grid gap-4 lg:grid-cols-2">
+                        <WorkerCard
+                            v-for="worker in workersStore.workers"
+                            :key="worker.id"
+                            :worker="worker"
+                        />
+                    </div>
 
-            <PaginationControls :meta="workersStore.meta" @change="load" />
+                    <PaginationControls :meta="workersStore.meta" @change="load" />
+                </div>
+            </Transition>
         </div>
     </DashboardLayout>
 </template>

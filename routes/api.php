@@ -285,12 +285,11 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
 
         // Show one customer booking request.
         Route::get('bookings/{booking}', [CustomerBookingController::class, 'show']);
-<<<<<<< HEAD
+
+        // Reuse a past booking as a safe starting point for a new request.
         Route::post('bookings/{booking}/book-again', [CustomerBookingController::class, 'bookAgain'])->middleware('throttle:booking-actions');
-=======
 
         // Let a customer review the worker after a booking.
->>>>>>> 8e26619 (fix console file)
         Route::post('bookings/{booking}/review', [ReviewController::class, 'store']);
 
         // Select the final worker from accepted booking responses.

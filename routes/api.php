@@ -54,6 +54,9 @@ Route::prefix('auth')->group(function (): void {
         // Update the authenticated user's account profile details.
         Route::put('profile', [AccountProfileController::class, 'update']);
 
+        // Update the authenticated user's password from a dashboard settings screen.
+        Route::put('password', [AccountProfileController::class, 'updatePassword']);
+
         // Show the authenticated user's latest unblock request.
         Route::get('unblock-request', [UnblockRequestController::class, 'show']);
 

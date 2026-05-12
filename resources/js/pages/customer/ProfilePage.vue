@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import PasswordUpdatePanel from '../../components/account/PasswordUpdatePanel.vue';
 import AppButton from '../../components/common/AppButton.vue';
 import AppPanel from '../../components/common/AppPanel.vue';
 import FormInput from '../../components/forms/FormInput.vue';
@@ -103,6 +104,10 @@ watch(() => authStore.user, fillForm, { immediate: true });
                     </div>
                 </form>
             </AppPanel>
+        </div>
+
+        <div class="mt-5 xl:max-w-3xl">
+            <PasswordUpdatePanel />
         </div>
     </DashboardLayout>
 </template>

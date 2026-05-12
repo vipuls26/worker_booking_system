@@ -23,6 +23,7 @@ import CustomerProfilePage from '../pages/customer/ProfilePage.vue';
 import CustomerWorkerDetailPage from '../pages/customer/WorkerDetailPage.vue';
 import CustomerWorkerListingPage from '../pages/customer/WorkerListingPage.vue';
 import AdminDashboardPage from '../pages/admin/DashboardPage.vue';
+import AdminProfilePage from '../pages/admin/ProfilePage.vue';
 import AdminServicesPage from '../pages/admin/ServicesPage.vue';
 import AdminWorkerServiceRequestsPage from '../pages/admin/WorkerServiceRequestsPage.vue';
 import AdminUsersPage from '../pages/admin/UsersPage.vue';
@@ -52,6 +53,12 @@ const routes = [
         path: '/admin/dashboard',
         name: 'admin.dashboard',
         component: AdminDashboardPage,
+        meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+        path: '/admin/profile',
+        name: 'admin.profile',
+        component: AdminProfilePage,
         meta: { requiresAuth: true, role: 'admin' },
     },
     {

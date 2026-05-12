@@ -32,6 +32,10 @@ export function updateProfile(payload) {
     return http.put('/auth/profile', payload);
 }
 
+export function updatePassword(payload) {
+    return http.put('/auth/password', payload);
+}
+
 export function unblockRequest() {
     return http.get('/auth/unblock-request');
 }

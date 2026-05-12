@@ -34,7 +34,7 @@ class BookingAutoMatchingWorkflowTest extends TestCase
         $bookingDate = now()->addDays(3)->toDateString();
         $dayOfWeek = (int) now()->addDays(3)->dayOfWeek;
         $availableWorker = $this->verifiedWorker();
-        $blockedWorker = $this->verifiedWorker(['is_blocked' => true]);
+        $blockedWorker = $this->verifiedWorker(['account_status' => User::STATUS_FULLY_BLOCKED, 'is_blocked' => true]);
         $busyWorker = $this->verifiedWorker();
 
         $this->attachServiceAndSchedule($availableWorker, $service, $dayOfWeek);

@@ -30,10 +30,10 @@ class UnblockRequestService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Only blocked users should enter the unblock review workflow.
-            if (! $lockedUser->is_blocked) {
+            // Only restricted users should enter the unblock review workflow.
+            if (! $lockedUser->isRestricted()) {
                 throw ValidationException::withMessages([
-                    'account' => ['Your account is not blocked.'],
+                    'account' => ['Your account is not restricted.'],
                 ]);
             }
 

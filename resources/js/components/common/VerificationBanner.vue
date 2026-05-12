@@ -12,6 +12,19 @@ const content = computed(() => {
         return null;
     }
 
+    if (authStore.isPartiallyBlocked) {
+        return {
+            icon: 'pi-ban',
+            title: 'Account partially blocked',
+            message: authStore.role === 'worker'
+                ? 'You can still access your account, but you cannot accept new requests, receive new assignments, or start new bookings until admin removes the restriction.'
+                : 'You can still access your account, but you cannot create new booking requests until admin removes the restriction.',
+            action: 'Review restriction',
+            to: '/account/blocked',
+            tone: 'warning',
+        };
+    }
+
     if (! authStore.isEmailVerified) {
         return {
             icon: 'pi-envelope',

@@ -112,7 +112,7 @@ class BookAgainService
             ->whereHas('service', fn ($query) => $query->where('is_active', true))
             ->whereHas('worker', function ($query): void {
                 $query
-                    ->where('is_blocked', false)
+                    ->where('account_status', User::STATUS_ACTIVE)
                     ->where('is_verified', true)
                     ->whereNotNull('email_verified_at')
                     ->whereHas('role', fn ($roleQuery) => $roleQuery->where('slug', 'worker'))

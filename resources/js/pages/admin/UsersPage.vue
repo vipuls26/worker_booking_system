@@ -18,34 +18,58 @@ const search = ref('');
 const role = ref('');
 const deleting = ref(null);
 const blocking = ref(null);
+const blockType = ref('unblock');
+
 const roleOptions = [
     { id: '', name: 'All roles' },
     { id: 'customer', name: 'Customer' },
     { id: 'worker', name: 'Worker' },
 ];
+
 const chipBase = 'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0.5';
 const neutralChip = `${chipBase} bg-blue-50 text-blue-700 shadow-[0_2px_0_#bfdbfe,0_6px_12px_rgba(37,99,235,0.12)] hover:bg-blue-100 active:shadow-[0_1px_0_#bfdbfe,0_4px_8px_rgba(37,99,235,0.12)] dark:bg-blue-500/10 dark:text-blue-300 dark:shadow-[0_2px_0_rgba(59,130,246,0.18)]`;
+const warningChip = `${chipBase} bg-amber-50 text-amber-700 shadow-[0_2px_0_#fde68a,0_6px_12px_rgba(217,119,6,0.12)] hover:bg-amber-100 active:shadow-[0_1px_0_#fde68a,0_4px_8px_rgba(217,119,6,0.12)] dark:bg-amber-500/10 dark:text-amber-300 dark:shadow-[0_2px_0_rgba(251,191,36,0.18)]`;
 const dangerChip = `${chipBase} bg-red-50 text-red-700 shadow-[0_2px_0_#fecaca,0_6px_12px_rgba(220,38,38,0.12)] hover:bg-red-100 active:shadow-[0_1px_0_#fecaca,0_4px_8px_rgba(220,38,38,0.12)] dark:bg-red-500/10 dark:text-red-300 dark:shadow-[0_2px_0_rgba(248,113,113,0.18)]`;
+
+const blockDialogTitle = computed(() => {
+    if (!blocking.value) {
+        return '';
+    }
+
+    if (blockType.value === 'unblock') {
+        return 'Unblock user';
+    }
+
+    return blockType.value === 'partially_blocked' ? 'Partial block user' : 'Full block user';
+});
+
 const blockDialogMessage = computed(() => {
     if (!blocking.value) {
         return '';
     }
 
-    if (blocking.value.is_blocked) {
-        return `Allow ${blocking.value.name || 'this user'} to access platform features again?`;
+    if (blockType.value === 'unblock') {
+        return `Allow ${blocking.value.name || 'this user'} to return to an active account status?`;
+    }
+
+    if (blockType.value === 'partially_blocked') {
+        return blocking.value.role?.slug === 'worker'
+            ? `Partially block ${blocking.value.name || 'this worker'}? They will keep account access, but pending requests will be cancelled and they will stop receiving or starting new work.`
+            : `Partially block ${blocking.value.name || 'this user'}? They will keep account access, but open booking requests and pending booking work will be cancelled.`;
     }
 
     const activeBookingsCount = blocking.value.active_worker_bookings_count || 0;
 
     if (activeBookingsCount > 0) {
-        return `Block ${blocking.value.name || 'this worker'} from protected platform features? This worker has ${activeBookingsCount} active booking${activeBookingsCount === 1 ? '' : 's'}. Blocking will cancel those bookings, notify customers, and send paid bookings for refund review. Email verification and admin approval will both reset.`;
+        return `Fully block ${blocking.value.name || 'this worker'}? This will reset email and worker verification, cancel future bookings, notify customers, and send paid bookings for refund review.`;
     }
 
-    return `Block ${blocking.value.name || 'this user'} from protected platform features? Email verification and admin approval will both reset. After unblock, they must verify email and wait for admin approval again.`;
+    return `Fully block ${blocking.value.name || 'this user'}? This will reset email verification and require admin approval before the account can fully recover.`;
 });
 
 async function load(page = 1) {
     loading.value = true;
+
     try {
         const response = await adminUsers({ search: search.value, role: role.value, page });
         users.value = response.data.data.users;
@@ -62,6 +86,11 @@ useDebouncedWatch(
     () => load(),
 );
 
+function openBlockDialog(user, nextBlockType = 'unblock') {
+    blocking.value = user;
+    blockType.value = nextBlockType;
+}
+
 async function confirmBlockToggle() {
     if (!blocking.value) {
         return;
@@ -70,8 +99,14 @@ async function confirmBlockToggle() {
     const user = blocking.value;
 
     try {
-        user.is_blocked ? await unblockAdminUser(user.id) : await blockAdminUser(user.id);
-        toast.success(user.is_blocked ? 'User unblocked' : 'User blocked');
+        if (blockType.value === 'unblock') {
+            await unblockAdminUser(user.id);
+            toast.success('User unblocked');
+        } else {
+            await blockAdminUser(user.id, blockType.value);
+            toast.success(blockType.value === 'partially_blocked' ? 'User partially blocked' : 'User fully blocked');
+        }
+
         blocking.value = null;
         await load(meta.value.current_page || 1);
     } catch (error) {
@@ -114,6 +149,7 @@ onMounted(load);
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
                 <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" />
             </div>
+
             <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email_status', label: 'Email status' }, { key: 'account_status', label: 'Account status' }, { key: 'admin_approval', label: 'Admin approval' }]" :loading="loading" :has-records="users.length > 0">
                 <tr v-for="user in users" :key="user.id">
                     <td class="px-4 py-3">
@@ -131,7 +167,7 @@ onMounted(load);
                             {{ user.email_verified_at ? 'Email verified' : 'Email pending' }}
                         </span>
                     </td>
-                    <td class="px-4 py-3"><StatusBadge :value="user.is_blocked ? 'blocked' : 'active'" /></td>
+                    <td class="px-4 py-3"><StatusBadge :value="user.account_status" /></td>
                     <td class="px-4 py-3">
                         <span
                             class="inline-flex rounded-full px-2 py-1 text-xs font-medium"
@@ -144,34 +180,39 @@ onMounted(load);
                     </td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex flex-wrap justify-end gap-2">
-                        <span
-                            v-if="!user.is_admin_verified && !user.email_verified_at"
-                            class="inline-flex items-center justify-center rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
-                        >
-                            Waiting email
-                        </span>
-                        <button
-                            v-else-if="!user.is_admin_verified"
-                            :class="neutralChip"
-                            @click="verifyUser(user)"
-                        >
-                            Verify
-                        </button>
-                        <button :class="neutralChip" @click="blocking = user">{{ user.is_blocked ? 'Unblock' : 'Block' }}</button>
-                        <button :class="dangerChip" @click="deleting = user">Delete</button>
+                            <span
+                                v-if="!user.is_admin_verified && !user.email_verified_at"
+                                class="inline-flex items-center justify-center rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                            >
+                                Waiting email
+                            </span>
+                            <button
+                                v-else-if="!user.is_admin_verified"
+                                :class="neutralChip"
+                                @click="verifyUser(user)"
+                            >
+                                Verify
+                            </button>
+                            <button v-if="user.account_status === 'active'" :class="warningChip" @click="openBlockDialog(user, 'partially_blocked')">Partial block</button>
+                            <button v-if="user.account_status === 'active' || user.account_status === 'partially_blocked'" :class="dangerChip" @click="openBlockDialog(user, 'fully_blocked')">Full block</button>
+                            <button v-if="user.account_status !== 'active'" :class="neutralChip" @click="openBlockDialog(user, 'unblock')">Unblock</button>
+                            <button :class="dangerChip" @click="deleting = user">Delete</button>
                         </div>
                     </td>
                 </tr>
             </AdminTable>
+
             <PaginationControls :meta="meta" @change="load" />
         </div>
+
         <ConfirmDialog
             :open="Boolean(blocking)"
-            :title="blocking?.is_blocked ? 'Unblock user' : 'Block user'"
+            :title="blockDialogTitle"
             :message="blockDialogMessage"
             @cancel="blocking = null"
             @confirm="confirmBlockToggle"
         />
+
         <ConfirmDialog :open="Boolean(deleting)" title="Delete user" message="This user account will be deleted." @cancel="deleting = null" @confirm="confirmDelete" />
     </AdminLayout>
 </template>

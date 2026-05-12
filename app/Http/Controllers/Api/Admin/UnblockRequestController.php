@@ -42,7 +42,7 @@ class UnblockRequestController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'User unblocked',
+            'message' => 'Unblock request approved',
             'data' => [
                 'unblock_request' => new UnblockRequestResource($unblockRequest),
             ],

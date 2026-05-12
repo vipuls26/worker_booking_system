@@ -17,7 +17,10 @@ export const useAuthStore = defineStore('auth', {
     getters: {
         isAuthenticated: (state) => Boolean(state.token && state.user),
         role: (state) => state.user?.role?.slug,
-        isBlocked: (state) => Boolean(state.user?.is_blocked),
+        accountStatus: (state) => state.user?.account_status || 'active',
+        isBlocked: (state) => Boolean(state.user?.is_fully_blocked),
+        isRestricted: (state) => Boolean(state.user?.is_restricted),
+        isPartiallyBlocked: (state) => Boolean(state.user?.is_partially_blocked),
         isEmailVerified: (state) => Boolean(state.user?.email_verified_at),
         isPlatformVerified: (state) => Boolean(state.user?.is_admin_verified),
         isVerified: (state) => Boolean(state.user?.email_verified_at && state.user?.is_admin_verified),

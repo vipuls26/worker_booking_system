@@ -225,7 +225,7 @@ router.beforeEach(async (to) => {
         return '/account/blocked';
     }
 
-    if (to.name === 'account.blocked' && authStore.isAuthenticated && ! authStore.isBlocked) {
+    if (to.name === 'account.blocked' && authStore.isAuthenticated && ! authStore.isRestricted) {
         return authStore.dashboardPath;
     }
 

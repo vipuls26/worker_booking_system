@@ -77,7 +77,7 @@ class BookAgainTest extends TestCase
     {
         [$customer, $worker, $service, $sourceServiceRequest] = $this->completedBookingActors();
 
-        $worker->update(['is_blocked' => true]);
+        $worker->update(['account_status' => User::STATUS_FULLY_BLOCKED, 'is_blocked' => true]);
         Sanctum::actingAs($customer);
 
         $this->postJson("/api/customer/bookings/{$sourceServiceRequest->id}/book-again")

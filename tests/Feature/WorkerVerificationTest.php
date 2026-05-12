@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WorkerProfile;
 use App\Models\WorkerVerification;
 use App\Notifications\BookingWorkflowNotification;
+use App\Notifications\VerificationStatusNotification;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -161,6 +162,42 @@ class WorkerVerificationTest extends TestCase
             BookingWorkflowNotification::class,
             function (BookingWorkflowNotification $notification) use ($customer): bool {
                 return $notification->toArray($customer)['event'] === 'worker_verification_removed';
+            }
+        );
+    }
+
+    public function test_admin_approval_notifies_worker_about_verification_status(): void
+    {
+        Notification::fake();
+
+        $this->seed(RoleSeeder::class);
+        [$admin, $worker] = [$this->adminUser(), $this->workerUser()];
+
+        WorkerProfile::factory()->create([
+            'user_id' => $worker->id,
+            'is_verified' => false,
+        ]);
+
+        $verification = WorkerVerification::create([
+            'user_id' => $worker->id,
+            'id_proof' => 'worker-verifications/'.$worker->id.'/id-proof.pdf',
+            'certificates' => [],
+            'experience_years' => 5,
+            'mobile_verified' => true,
+            'status' => WorkerVerification::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/worker-verifications/{$verification->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.verification.status', WorkerVerification::STATUS_APPROVED);
+
+        Notification::assertSentTo(
+            $worker,
+            VerificationStatusNotification::class,
+            function (VerificationStatusNotification $notification) use ($worker): bool {
+                return $notification->toArray($worker)['event'] === 'verification_status_updated';
             }
         );
     }

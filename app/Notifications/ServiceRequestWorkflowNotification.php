@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Models\ServiceRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Queue\SerializesModels;
 
@@ -32,7 +33,7 @@ class ServiceRequestWorkflowNotification extends Notification implements ShouldQ
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'broadcast'];
     }
 
     /**
@@ -53,6 +54,14 @@ class ServiceRequestWorkflowNotification extends Notification implements ShouldQ
             'url' => $this->urlFor($notifiable),
             'broadcast_ready' => true,
         ];
+    }
+
+    /**
+     * Broadcast the same payload used by the stored notification record.
+     */
+    public function toBroadcast(object $notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage($this->toArray($notifiable));
     }
 
     private function urlFor(object $notifiable): string

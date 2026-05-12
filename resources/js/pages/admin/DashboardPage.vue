@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { adminDashboard } from '../../api/admin';
 import AnalyticsBarChart from '../../components/common/AnalyticsBarChart.vue';
@@ -8,8 +8,10 @@ import AnalyticsTable from '../../components/common/AnalyticsTable.vue';
 import DashboardCard from '../../components/common/DashboardCard.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
 import AdminLayout from '../../layouts/AdminLayout.vue';
+import { useRealtimeStore } from '../../stores/realtime';
 
 const loading = ref(true);
+const realtimeStore = useRealtimeStore();
 const stats = ref({
     total_users: 0,
     total_workers: 0,
@@ -33,16 +35,29 @@ const revenueSummary = computed(() => [
     { label: 'Worker earnings', value: stats.value.worker_payouts || 0, icon: 'pi-briefcase' },
 ]);
 
-onMounted(async () => {
+async function loadDashboard(showErrorToast = true) {
     try {
         const response = await adminDashboard();
         stats.value = response.data.data;
     } catch {
-        toast.error('Unable to load dashboard');
+        if (showErrorToast) {
+            toast.error('Unable to load dashboard');
+        }
     } finally {
         loading.value = false;
     }
+}
+
+onMounted(async () => {
+    await loadDashboard();
 });
+
+watch(
+    () => realtimeStore.adminDashboardRefreshKey,
+    async () => {
+        await loadDashboard(false);
+    },
+);
 </script>
 
 <template>

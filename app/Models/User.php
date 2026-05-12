@@ -42,6 +42,14 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Keep broadcast notifications on one predictable private user channel.
+     */
+    public function receivesBroadcastNotificationsOn(): string
+    {
+        return 'users.'.$this->id;
+    }
+
+    /**
      * Check whether the user account is fully active.
      */
     public function isActive(): bool

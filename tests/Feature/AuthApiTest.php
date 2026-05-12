@@ -163,6 +163,27 @@ class AuthApiTest extends TestCase
         Notification::assertSentTo($user, ResetPassword::class);
     }
 
+    public function test_authenticated_user_can_request_password_reset_link_for_their_own_email(): void
+    {
+        Notification::fake();
+        $this->seed(RoleSeeder::class);
+
+        $user = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create(['email' => 'signed-in-customer@example.com']);
+
+        Sanctum::actingAs($user, ['*']);
+
+        $this->postJson('/api/auth/forgot-password', [
+            'email' => 'signed-in-customer@example.com',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Password reset link sent');
+
+        Notification::assertSentTo($user, ResetPassword::class);
+    }
+
     public function test_user_can_reset_password_with_valid_token(): void
     {
         $this->seed(RoleSeeder::class);

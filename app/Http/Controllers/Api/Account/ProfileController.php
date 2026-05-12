@@ -3,15 +3,23 @@
 namespace App\Http\Controllers\Api\Account;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Account\UpdatePasswordRequest;
 use App\Http\Requests\Api\Account\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
+use App\Services\Account\PasswordService;
 use App\Services\Account\ProfileService;
 use Illuminate\Http\JsonResponse;
 
 class ProfileController extends Controller
 {
-    public function __construct(private readonly ProfileService $profiles) {}
+    public function __construct(
+        private readonly ProfileService $profiles,
+        private readonly PasswordService $passwords,
+    ) {}
 
+    /**
+     * Update the authenticated user's account profile details.
+     */
     public function update(UpdateProfileRequest $request): JsonResponse
     {
         // Account profile updates may reset verification when business-critical contact details change.
@@ -20,6 +28,20 @@ class ProfileController extends Controller
             'message' => 'Profile updated successfully',
             'data' => [
                 'user' => new UserResource($this->profiles->update($request->user(), $request->validated())),
+            ],
+        ]);
+    }
+
+    /**
+     * Update the authenticated user's password from the dashboard security form.
+     */
+    public function updatePassword(UpdatePasswordRequest $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Password updated successfully',
+            'data' => [
+                'user' => new UserResource($this->passwords->update($request->user(), $request->validated())),
             ],
         ]);
     }

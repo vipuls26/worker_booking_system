@@ -74,6 +74,13 @@ export const useAuthStore = defineStore('auth', {
             return response.data;
         },
 
+        async updatePassword(payload) {
+            const response = await authApi.updatePassword(payload);
+            this.setUser(response.data.data.user);
+
+            return response.data;
+        },
+
         async register(payload) {
             const response = await authApi.register(payload);
             this.setSession(response.data.data);

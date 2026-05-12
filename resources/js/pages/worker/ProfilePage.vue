@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import PasswordUpdatePanel from '../../components/account/PasswordUpdatePanel.vue';
 import AppButton from '../../components/common/AppButton.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
@@ -311,5 +312,9 @@ onBeforeUnmount(() => {
                 </div>
             </section>
         </form>
+
+        <div class="mt-6 xl:max-w-3xl">
+            <PasswordUpdatePanel />
+        </div>
     </DashboardLayout>
 </template>

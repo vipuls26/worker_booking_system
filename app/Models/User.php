@@ -15,10 +15,16 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['role_id', 'name', 'email', 'phone', 'password', 'is_blocked', 'is_verified'])]
+#[Fillable(['role_id', 'name', 'email', 'phone', 'password', 'is_blocked', 'account_status', 'is_verified'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_PARTIALLY_BLOCKED = 'partially_blocked';
+
+    public const STATUS_FULLY_BLOCKED = 'fully_blocked';
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -33,6 +39,54 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasRole(string $role): bool
     {
         return $this->role?->slug === $role;
+    }
+
+    /**
+     * Check whether the user account is fully active.
+     */
+    public function isActive(): bool
+    {
+        return $this->account_status === self::STATUS_ACTIVE;
+    }
+
+    /**
+     * Check whether the user can still log in but cannot create new operational work.
+     */
+    public function isPartiallyBlocked(): bool
+    {
+        return $this->account_status === self::STATUS_PARTIALLY_BLOCKED;
+    }
+
+    /**
+     * Check whether the user is under the strictest platform restriction.
+     */
+    public function isFullyBlocked(): bool
+    {
+        return $this->account_status === self::STATUS_FULLY_BLOCKED;
+    }
+
+    /**
+     * Check whether the account is under any admin restriction.
+     */
+    public function isRestricted(): bool
+    {
+        return ! $this->isActive();
+    }
+
+    /**
+     * Check whether the user may create new customer-side bookings.
+     */
+    public function canCreateBookings(): bool
+    {
+        return $this->isActive();
+    }
+
+    /**
+     * Check whether the worker may receive new requests and start new work.
+     */
+    public function canTakeNewWork(): bool
+    {
+        return $this->isActive();
     }
 
     /**
@@ -177,6 +231,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_blocked' => 'boolean',
+            'account_status' => 'string',
             'is_verified' => 'boolean',
         ];
     }

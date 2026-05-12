@@ -41,13 +41,13 @@ class UnblockRequestWorkflowTest extends TestCase
     }
 
     /**
-     * Approval must unblock the user in the same transaction that records the admin decision.
+     * Approval must fully restore a partially blocked user in the same transaction.
      */
-    public function test_admin_approval_unblocks_user_and_notifies_them(): void
+    public function test_admin_approval_restores_partially_blocked_user_and_notifies_them(): void
     {
         Notification::fake();
 
-        [$admin, $blockedUser] = $this->reviewUsers();
+        [$admin, $blockedUser] = $this->reviewUsers(User::STATUS_PARTIALLY_BLOCKED);
         $unblockRequest = UnblockRequest::factory()->create([
             'user_id' => $blockedUser->id,
             'status' => UnblockRequest::STATUS_PENDING,
@@ -71,6 +71,7 @@ class UnblockRequestWorkflowTest extends TestCase
 
         $this->assertDatabaseHas('users', [
             'id' => $blockedUser->id,
+            'account_status' => User::STATUS_ACTIVE,
             'is_blocked' => false,
         ]);
 
@@ -86,6 +87,43 @@ class UnblockRequestWorkflowTest extends TestCase
         );
     }
 
+    public function test_admin_approval_moves_fully_blocked_user_into_reverification_state(): void
+    {
+        Notification::fake();
+
+        [$admin, $blockedUser] = $this->reviewUsers(User::STATUS_FULLY_BLOCKED);
+        $unblockRequest = UnblockRequest::factory()->create([
+            'user_id' => $blockedUser->id,
+            'status' => UnblockRequest::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/unblock-requests/{$unblockRequest->id}/approve", [
+            'admin_note' => 'Start reverification.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.unblock_request.status', UnblockRequest::STATUS_APPROVED)
+            ->assertJsonPath('data.unblock_request.needs_reverification', true);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $blockedUser->id,
+            'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+            'is_blocked' => false,
+        ]);
+
+        Notification::assertSentTo(
+            $blockedUser,
+            UnblockRequestReviewedNotification::class,
+            function (UnblockRequestReviewedNotification $notification) use ($blockedUser): bool {
+                $payload = $notification->toArray($blockedUser);
+
+                return $payload['event'] === 'unblock_request_approved'
+                    && $payload['needs_reverification'] === true;
+            }
+        );
+    }
+
     /**
      * Rejection must keep the account blocked and still notify the user of the decision.
      */
@@ -93,7 +131,7 @@ class UnblockRequestWorkflowTest extends TestCase
     {
         Notification::fake();
 
-        [$admin, $blockedUser] = $this->reviewUsers();
+        [$admin, $blockedUser] = $this->reviewUsers(User::STATUS_FULLY_BLOCKED);
         $unblockRequest = UnblockRequest::factory()->create([
             'user_id' => $blockedUser->id,
             'status' => UnblockRequest::STATUS_PENDING,
@@ -110,6 +148,7 @@ class UnblockRequestWorkflowTest extends TestCase
 
         $this->assertDatabaseHas('users', [
             'id' => $blockedUser->id,
+            'account_status' => User::STATUS_FULLY_BLOCKED,
             'is_blocked' => true,
         ]);
 
@@ -131,7 +170,7 @@ class UnblockRequestWorkflowTest extends TestCase
      *
      * @return array{User, User}
      */
-    private function reviewUsers(): array
+    private function reviewUsers(string $accountStatus = User::STATUS_FULLY_BLOCKED): array
     {
         $this->seed(RoleSeeder::class);
 
@@ -141,7 +180,10 @@ class UnblockRequestWorkflowTest extends TestCase
 
         $blockedUser = User::factory()
             ->for(Role::where('slug', 'customer')->firstOrFail())
-            ->create(['is_blocked' => true]);
+            ->create([
+                'account_status' => $accountStatus,
+                'is_blocked' => $accountStatus === User::STATUS_FULLY_BLOCKED,
+            ]);
 
         return [$admin, $blockedUser];
     }
@@ -155,6 +197,9 @@ class UnblockRequestWorkflowTest extends TestCase
 
         return User::factory()
             ->for(Role::where('slug', 'customer')->firstOrFail())
-            ->create(['is_blocked' => true]);
+            ->create([
+                'account_status' => User::STATUS_FULLY_BLOCKED,
+                'is_blocked' => true,
+            ]);
     }
 }

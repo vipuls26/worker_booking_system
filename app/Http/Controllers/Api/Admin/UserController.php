@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\BlockUserRequest;
 use App\Http\Requests\Api\Admin\IndexUsersRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -39,18 +40,22 @@ class UserController extends Controller
         ]);
     }
 
-    public function block(User $user): JsonResponse
+    public function block(BlockUserRequest $request, User $user): JsonResponse
     {
+        $blockType = $request->string('block_type')->toString();
+
         try {
-            // Blocking removes a user's platform access and may reset worker booking eligibility.
-            $user = $this->users->block($user);
+            // Admins choose the moderation level based on how serious the restriction needs to be.
+            $user = $blockType === User::STATUS_PARTIALLY_BLOCKED
+                ? $this->users->partialBlock($user)
+                : $this->users->fullBlock($user);
         } catch (ValidationException $exception) {
             return $this->validationError('Unable to block user', $exception);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'User blocked',
+            'message' => $blockType === User::STATUS_PARTIALLY_BLOCKED ? 'User partially blocked' : 'User fully blocked',
             'data' => ['user' => new UserResource($user)],
         ]);
     }

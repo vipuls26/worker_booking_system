@@ -72,8 +72,8 @@ export function adminUsers(params = {}) {
     return http.get('/admin/users', { params });
 }
 
-export function blockAdminUser(id) {
-    return http.patch(`/admin/users/${id}/block`);
+export function blockAdminUser(id, block_type) {
+    return http.patch(`/admin/users/${id}/block`, { block_type });
 }
 
 export function unblockAdminUser(id) {

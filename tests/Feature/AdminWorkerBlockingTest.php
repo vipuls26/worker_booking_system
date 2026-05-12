@@ -43,7 +43,7 @@ class AdminWorkerBlockingTest extends TestCase
             ->assertJsonPath('data.users.0.active_worker_bookings_count', 1);
     }
 
-    public function test_blocking_worker_cancels_active_bookings_and_notifies_customers(): void
+    public function test_full_blocking_worker_cancels_future_bookings_and_notifies_customers(): void
     {
         Notification::fake();
 
@@ -66,27 +66,30 @@ class AdminWorkerBlockingTest extends TestCase
             'status' => Payment::STATUS_PAID,
         ]);
 
-        $unpaidBooking = Booking::factory()->create([
+        $confirmedBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+            'payment_status' => Booking::PAYMENT_UNPAID,
+        ]);
+
+        $inProgressBooking = Booking::factory()->create([
             'customer_id' => $customer->id,
             'worker_id' => $worker->id,
             'service_id' => $service->id,
             'status' => Booking::STATUS_IN_PROGRESS,
-            'payment_status' => Booking::PAYMENT_UNPAID,
-        ]);
-
-        $completedBooking = Booking::factory()->create([
-            'customer_id' => $customer->id,
-            'worker_id' => $worker->id,
-            'service_id' => $service->id,
-            'status' => Booking::STATUS_COMPLETED,
         ]);
 
         Sanctum::actingAs($admin);
 
-        $this->patchJson("/api/admin/users/{$worker->id}/block")
+        $this->patchJson("/api/admin/users/{$worker->id}/block", [
+            'block_type' => User::STATUS_FULLY_BLOCKED,
+        ])
             ->assertOk()
+            ->assertJsonPath('data.user.account_status', User::STATUS_FULLY_BLOCKED)
             ->assertJsonPath('data.user.is_blocked', true)
-            ->assertJsonPath('data.user.active_worker_bookings_count', 0);
+            ->assertJsonPath('data.user.active_worker_bookings_count', 1);
 
         $this->assertDatabaseHas('bookings', [
             'id' => $paidBooking->id,
@@ -97,7 +100,7 @@ class AdminWorkerBlockingTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('bookings', [
-            'id' => $unpaidBooking->id,
+            'id' => $confirmedBooking->id,
             'status' => Booking::STATUS_CANCELLED,
             'cancelled_by' => $admin->id,
             'cancelled_reason' => 'Worker blocked by admin',
@@ -105,8 +108,8 @@ class AdminWorkerBlockingTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('bookings', [
-            'id' => $completedBooking->id,
-            'status' => Booking::STATUS_COMPLETED,
+            'id' => $inProgressBooking->id,
+            'status' => Booking::STATUS_IN_PROGRESS,
         ]);
 
         $this->assertDatabaseHas('booking_activities', [
@@ -127,7 +130,7 @@ class AdminWorkerBlockingTest extends TestCase
 
         $this->assertDatabaseHas('audit_logs', [
             'actor_id' => $admin->id,
-            'action' => 'admin.user_blocked',
+            'action' => 'admin.user_fully_blocked',
             'subject_type' => (new User)->getMorphClass(),
             'subject_id' => $worker->id,
         ]);
@@ -139,6 +142,53 @@ class AdminWorkerBlockingTest extends TestCase
                 return $notification->toArray($customer)['event'] === 'worker_blocked_booking_cancelled';
             }
         );
+    }
+
+    public function test_partial_blocking_worker_cancels_pending_work_only(): void
+    {
+        [$admin, $worker, $customer, $service] = $this->bookingUsers();
+
+        $pendingBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_PENDING,
+        ]);
+
+        $confirmedBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/users/{$worker->id}/block", [
+            'block_type' => User::STATUS_PARTIALLY_BLOCKED,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.user.account_status', User::STATUS_PARTIALLY_BLOCKED)
+            ->assertJsonPath('data.user.is_blocked', false)
+            ->assertJsonPath('data.user.active_worker_bookings_count', 1);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $pendingBooking->id,
+            'status' => Booking::STATUS_CANCELLED,
+            'cancelled_reason' => 'Account partially blocked by admin',
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $confirmedBooking->id,
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'admin.user_partially_blocked',
+            'subject_type' => (new User)->getMorphClass(),
+            'subject_id' => $worker->id,
+        ]);
     }
 
     /**

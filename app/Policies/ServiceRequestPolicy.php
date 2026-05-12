@@ -27,8 +27,8 @@ class ServiceRequestPolicy
 
     public function create(User $user): bool
     {
-        // Customers must be verified and active before sending work requests to providers.
-        return $user->hasRole('customer') && $user->hasVerifiedEmail() && ! $user->is_blocked && $user->is_verified;
+        // Customers must stay fully active before creating new booking requests.
+        return $user->hasRole('customer') && $user->hasVerifiedEmail() && $user->canCreateBookings() && $user->is_verified;
     }
 
     public function selectWorker(User $user, ServiceRequest $serviceRequest): bool

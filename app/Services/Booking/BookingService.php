@@ -37,6 +37,13 @@ class BookingService
     public function create(User $customer, array $data): ServiceRequest
     {
         return DB::transaction(function () use ($customer, $data): ServiceRequest {
+            // Partially blocked customers may log in, but they cannot open new booking work.
+            if (! $customer->canCreateBookings()) {
+                throw ValidationException::withMessages([
+                    'account' => ['Your account is temporarily restricted from creating new bookings.'],
+                ]);
+            }
+
             $address = $data['address'] ?? $customer->customerProfile?->address;
 
             // Customers must have a usable service address before workers can quote or travel.
@@ -154,6 +161,13 @@ class BookingService
     {
         abort_if($serviceRequestWorker->worker_id !== $worker->id, 404);
 
+        // Partially blocked workers cannot accept new work while the restriction is active.
+        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && ! $worker->canTakeNewWork()) {
+            throw ValidationException::withMessages([
+                'account' => ['Your account is temporarily restricted from accepting new booking requests.'],
+            ]);
+        }
+
         // A worker response is final for the pending invitation to avoid conflicting quotes.
         if ($serviceRequestWorker->status !== ServiceRequestWorker::STATUS_PENDING) {
             throw ValidationException::withMessages(['status' => ['This request has already been answered.']]);
@@ -229,6 +243,13 @@ class BookingService
 
     public function updateStatus(Booking $booking, string $status, ?string $reason = null, ?User $actor = null): Booking
     {
+        // Partially blocked workers may finish current work, but they cannot start new bookings.
+        if ($actor?->hasRole('worker') && $status === Booking::STATUS_IN_PROGRESS && ! $actor->canTakeNewWork()) {
+            throw ValidationException::withMessages([
+                'account' => ['Your account is temporarily restricted from starting new bookings.'],
+            ]);
+        }
+
         // Starting work has extra business rules beyond the normal status flow.
         if ($status === Booking::STATUS_IN_PROGRESS) {
             $this->assertBookingCanStart($booking);

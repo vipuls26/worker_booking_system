@@ -15,13 +15,13 @@ class EnsureUserIsNotBlocked
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Blocked accounts cannot continue booking or marketplace activity.
-        if ($request->user()?->is_blocked) {
+        // Fully blocked accounts cannot access protected platform routes until admin review is complete.
+        if ($request->user()?->isFullyBlocked()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Account blocked',
+                'message' => 'Account fully blocked',
                 'errors' => [
-                    'account' => ['Your account has been blocked by admin.'],
+                    'account' => ['Your account has been fully blocked by admin.'],
                 ],
             ], 403);
         }

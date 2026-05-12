@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../components/common/AppButton.vue';
@@ -14,6 +14,21 @@ const { errors, setApiError, clearApiErrors } = useApiErrors();
 const loading = ref(false);
 const saving = ref(false);
 const latestRequest = ref(null);
+const restrictionContent = computed(() => {
+    if (authStore.accountStatus === 'partially_blocked') {
+        return {
+            title: 'Account partially blocked',
+            message: authStore.role === 'worker'
+                ? 'You can still access your dashboard, profile, and booking history. New work is paused until admin reviews your unblock request.'
+                : 'You can still access your dashboard, profile, and booking history. New bookings are paused until admin reviews your unblock request.',
+        };
+    }
+
+    return {
+        title: 'Account fully blocked',
+        message: 'Your account is under a full restriction. Protected platform actions are paused until admin review is complete.',
+    };
+});
 
 const form = reactive({
     reason: '',
@@ -26,7 +41,7 @@ async function loadRequest() {
         const response = await authStore.fetchUnblockRequest();
         latestRequest.value = response.data.unblock_request;
 
-        if (latestRequest.value?.status === 'approved') {
+        if (latestRequest.value?.status === 'approved' && ! latestRequest.value?.needs_reverification) {
             await authStore.refreshUser();
             toast.success('Your unblock request was approved');
             await router.replace(authStore.dashboardPath);
@@ -63,7 +78,7 @@ async function logout() {
 onMounted(async () => {
     await authStore.refreshUser();
 
-    if (! authStore.isBlocked) {
+    if (! authStore.isRestricted) {
         await router.replace(authStore.dashboardPath);
         return;
     }
@@ -83,9 +98,9 @@ onMounted(async () => {
                 <i class="pi pi-ban text-xl" aria-hidden="true"></i>
             </div>
 
-            <h1 class="mt-5 text-2xl font-semibold">Account blocked</h1>
+            <h1 class="mt-5 text-2xl font-semibold">{{ restrictionContent.title }}</h1>
             <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                Your account is blocked by admin. You can submit an unblock request below, but booking and dashboard features are locked until admin approves it.
+                {{ restrictionContent.message }}
             </p>
 
             <div v-if="latestRequest" class="mt-5 rounded-md border border-gray-200 p-4 text-sm dark:border-white/10">
@@ -99,18 +114,22 @@ onMounted(async () => {
                 <p v-if="latestRequest.admin_note" class="mt-2 text-gray-500 dark:text-gray-400">Admin note: {{ latestRequest.admin_note }}</p>
             </div>
 
-            <form v-if="!latestRequest || latestRequest.status !== 'pending'" class="mt-6 space-y-4" @submit.prevent="submit">
+            <form v-if="!latestRequest || latestRequest.status === 'rejected'" class="mt-6 space-y-4" @submit.prevent="submit">
                 <div v-if="errors.request?.length || errors.account?.length" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
                     {{ errors.request?.[0] || errors.account?.[0] }}
                 </div>
-                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin unblock your account?" :error="errors.reason" />
+                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin remove this restriction?" :error="errors.reason" />
                 <AppButton type="submit" icon="pi-send" :loading="saving">
                     {{ saving ? 'Submitting...' : 'Submit unblock request' }}
                 </AppButton>
             </form>
 
-            <p v-else class="mt-5 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+            <p v-else-if="latestRequest?.status === 'pending'" class="mt-5 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
                 Your unblock request is pending admin review.
+            </p>
+
+            <p v-if="latestRequest?.status === 'approved' && latestRequest?.needs_reverification" class="mt-5 rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-500/10 dark:text-blue-200">
+                Admin approved your request. You still need to verify your email and complete worker reverification before full access returns.
             </p>
 
             <button type="button" class="mt-6 text-sm font-medium text-gray-600 underline dark:text-gray-300" @click="logout">

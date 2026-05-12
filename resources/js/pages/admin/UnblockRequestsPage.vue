@@ -97,10 +97,14 @@ onMounted(load);
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ item.user?.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.user?.email }}</p>
+                        <div class="mt-2">
+                            <StatusBadge :value="item.account_status || item.user?.account_status || 'active'" />
+                        </div>
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                         <p class="max-w-xl">{{ item.reason }}</p>
                         <p v-if="item.admin_note" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin note: {{ item.admin_note }}</p>
+                        <p v-if="item.needs_reverification" class="mt-1 text-xs text-blue-600 dark:text-blue-300">Approval will still require reverification before full access returns.</p>
                     </td>
                     <td class="px-4 py-3"><StatusBadge :value="item.status" /></td>
                     <td class="px-4 py-3 text-right">

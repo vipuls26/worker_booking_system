@@ -23,7 +23,7 @@ class WorkerSearchService
         $query = User::query()
             ->select('users.*')
             ->whereHas('role', fn ($query) => $query->where('slug', 'worker'))
-            ->where('users.is_blocked', false)
+            ->where('users.account_status', User::STATUS_ACTIVE)
             ->whereNotNull('users.email_verified_at')
             ->where('users.is_verified', true)
             ->whereHas('workerProfile', fn ($query) => $query->where('is_verified', true))
@@ -66,7 +66,7 @@ class WorkerSearchService
         // Worker detail pages should be available only for marketplace-ready workers.
         abort_unless(
             $worker->hasRole('worker')
-            && ! $worker->is_blocked
+            && $worker->isActive()
             && $worker->email_verified_at !== null
             && $worker->is_verified
             && $worker->workerProfile()->where('is_verified', true)->exists(),

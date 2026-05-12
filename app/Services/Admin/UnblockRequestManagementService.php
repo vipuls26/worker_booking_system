@@ -65,20 +65,31 @@ class UnblockRequestManagementService
                 'reviewed_at' => now(),
             ]);
 
-            // An approved appeal restores account access immediately.
+            // Partial blocks return straight to active, while full blocks move into a reverification-only restricted state.
             if ($status === UnblockRequest::STATUS_APPROVED) {
-                $blockedUser->update(['is_blocked' => false]);
+                if ($blockedUser->isPartiallyBlocked()) {
+                    $blockedUser->update([
+                        'account_status' => User::STATUS_ACTIVE,
+                        'is_blocked' => false,
+                    ]);
+                } elseif ($blockedUser->isFullyBlocked()) {
+                    $blockedUser->update([
+                        'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+                        'is_blocked' => false,
+                    ]);
+                }
             }
 
             $this->audit->record('admin.unblock_request_'.$status, $admin, $lockedUnblockRequest, [
                 'user_id' => $lockedUnblockRequest->user_id,
                 'note' => $note,
+                'account_status' => $blockedUser->account_status,
             ]);
 
             $reviewedRequest = $lockedUnblockRequest->refresh()->load(['user.role', 'reviewer.role']);
 
             // Users need a durable notification for both approved and rejected unblock decisions.
-            $blockedUser->notify(new UnblockRequestReviewedNotification($reviewedRequest));
+            $blockedUser->refresh()->notify(new UnblockRequestReviewedNotification($reviewedRequest));
 
             return $reviewedRequest;
         });

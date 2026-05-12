@@ -4,6 +4,8 @@ namespace App\Services\Admin;
 
 use App\Models\Booking;
 use App\Models\Payment;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerVerification;
 use App\Notifications\BookingWorkflowNotification;
@@ -17,14 +19,20 @@ use Illuminate\Validation\ValidationException;
 
 class UserManagementService
 {
+    private const PARTIAL_BLOCK_REASON = 'Account partially blocked by admin';
+
+    private const FULL_BLOCK_REASON = 'Worker blocked by admin';
+
     public function __construct(
         private readonly UserFilter $filter,
         private readonly AuditLogger $audit,
     ) {}
 
+    /**
+     * Show admin users with worker booking impact counts for moderation decisions.
+     */
     public function paginate(Request $request): LengthAwarePaginator
     {
-        // User management excludes admin accounts so staff accounts are handled through safer admin-only flows.
         $query = User::query()
             ->with(['role', 'customerProfile'])
             ->withCount([
@@ -41,19 +49,45 @@ class UserManagementService
             ->paginate($request->integer('per_page', 15));
     }
 
-    public function block(User $user): User
+    /**
+     * Apply a partial block while keeping login and profile access available.
+     */
+    public function partialBlock(User $user): User
     {
-        $this->ensureNotAdmin($user, 'Admin accounts cannot be blocked.');
+        $this->ensureNotAdmin($user, 'Admin accounts cannot be partially blocked.');
 
-        $admin = request()->user();
-
-        // Audit records must still be written if the service is called outside an authenticated admin request.
-        if (! $admin instanceof User) {
-            $admin = null;
-        }
+        $admin = $this->currentAdmin();
 
         DB::transaction(function () use ($user, $admin): void {
             $user->forceFill([
+                'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+                'is_blocked' => false,
+            ])->save();
+
+            $partialBlockSummary = $this->handlePartialBlockBookings($user, $admin);
+
+            $this->audit->record('admin.user_partially_blocked', $admin, $user, [
+                'pending_service_requests_cancelled' => $partialBlockSummary['cancelled_service_requests_count'],
+                'pending_worker_requests_cancelled' => $partialBlockSummary['cancelled_worker_requests_count'],
+                'pending_bookings_cancelled' => $partialBlockSummary['cancelled_pending_bookings_count'],
+            ]);
+        });
+
+        return $this->loadUserForAdminResponse($user);
+    }
+
+    /**
+     * Apply a full block and reset trust checks that require reverification later.
+     */
+    public function fullBlock(User $user): User
+    {
+        $this->ensureNotAdmin($user, 'Admin accounts cannot be fully blocked.');
+
+        $admin = $this->currentAdmin();
+
+        DB::transaction(function () use ($user, $admin): void {
+            $user->forceFill([
+                'account_status' => User::STATUS_FULLY_BLOCKED,
                 'is_blocked' => true,
                 'is_verified' => false,
                 'email_verified_at' => null,
@@ -64,37 +98,37 @@ class UserManagementService
                 'refund_review_count' => 0,
             ];
 
-            // Blocking a worker also removes marketplace verification until an admin re-approves them.
+            // Full blocks remove worker verification because the trust review must restart.
             if ($user->loadMissing('role')->hasRole('worker')) {
                 $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
                     'is_verified' => false,
                 ]);
 
-                $bookingCancellationSummary = $this->cancelActiveWorkerBookings($user, $admin);
+                $bookingCancellationSummary = $this->cancelFutureWorkerBookings($user, $admin);
             }
 
-            $this->audit->record('admin.user_blocked', $admin, $user, [
+            $this->audit->record('admin.user_fully_blocked', $admin, $user, [
                 'email_verification_reset' => true,
                 'admin_approval_reset' => true,
-                'active_bookings_cancelled' => $bookingCancellationSummary['cancelled_count'] ?? 0,
-                'refund_reviews_required' => $bookingCancellationSummary['refund_review_count'] ?? 0,
+                'future_bookings_cancelled' => $bookingCancellationSummary['cancelled_count'],
+                'refund_reviews_required' => $bookingCancellationSummary['refund_review_count'],
             ]);
         });
 
-        return $user->refresh()->load(['role', 'customerProfile', 'workerProfile'])
-            ->loadCount([
-                'workerBookings as active_worker_bookings_count' => function (Builder $query): void {
-                    // The UI should show zero once the worker block cancellation is complete.
-                    $query->whereIn('status', Booking::ActiveStatuses);
-                },
-            ]);
+        return $this->loadUserForAdminResponse($user);
     }
 
+    /**
+     * Manually restore a blocked user outside the unblock request workflow.
+     */
     public function unblock(User $user): User
     {
         $this->ensureNotAdmin($user, 'Admin accounts cannot be unblocked from user management.');
 
-        $user->update(['is_blocked' => false]);
+        $user->update([
+            'account_status' => User::STATUS_ACTIVE,
+            'is_blocked' => false,
+        ]);
 
         $this->audit->record('admin.user_unblocked', request()->user(), $user);
 
@@ -102,24 +136,171 @@ class UserManagementService
     }
 
     /**
-     * Cancel every active booking owned by a blocked worker so customers are not left with unusable assignments.
+     * Load the consistent user payload needed by the admin users screen.
+     */
+    private function loadUserForAdminResponse(User $user): User
+    {
+        return $user->refresh()->load(['role', 'customerProfile', 'workerProfile'])
+            ->loadCount([
+                'workerBookings as active_worker_bookings_count' => function (Builder $query): void {
+                    $query->whereIn('status', Booking::ActiveStatuses);
+                },
+            ]);
+    }
+
+    /**
+     * Cancel only the early-stage work that should not continue during a partial block.
+     *
+     * @return array{cancelled_service_requests_count: int, cancelled_worker_requests_count: int, cancelled_pending_bookings_count: int}
+     */
+    private function handlePartialBlockBookings(User $user, ?User $admin): array
+    {
+        $cancelledServiceRequestsCount = 0;
+        $cancelledWorkerRequestsCount = 0;
+        $cancelledPendingBookingsCount = 0;
+
+        if ($user->loadMissing('role')->hasRole('customer')) {
+            $cancelledServiceRequestsCount = $this->cancelOpenCustomerServiceRequests($user, $admin);
+            $cancelledPendingBookingsCount += $this->cancelPendingCustomerBookings($user, $admin);
+        }
+
+        if ($user->hasRole('worker')) {
+            $cancelledWorkerRequestsCount = $this->cancelPendingWorkerRequests($user);
+            $cancelledPendingBookingsCount += $this->cancelPendingWorkerBookings($user, $admin);
+        }
+
+        return [
+            'cancelled_service_requests_count' => $cancelledServiceRequestsCount,
+            'cancelled_worker_requests_count' => $cancelledWorkerRequestsCount,
+            'cancelled_pending_bookings_count' => $cancelledPendingBookingsCount,
+        ];
+    }
+
+    /**
+     * Cancel open customer-side service requests so partially blocked customers cannot keep booking.
+     */
+    private function cancelOpenCustomerServiceRequests(User $customer, ?User $admin): int
+    {
+        $cancelledCount = 0;
+
+        $openServiceRequests = ServiceRequest::query()
+            ->where('customer_id', $customer->id)
+            ->where('status', ServiceRequest::STATUS_OPEN)
+            ->get();
+
+        foreach ($openServiceRequests as $serviceRequest) {
+            $serviceRequest->update(['status' => ServiceRequest::STATUS_CANCELLED]);
+
+            $serviceRequest->workers()
+                ->whereIn('status', [
+                    ServiceRequestWorker::STATUS_PENDING,
+                    ServiceRequestWorker::STATUS_ACCEPTED,
+                    ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+                ])
+                ->update([
+                    'status' => ServiceRequestWorker::STATUS_CANCELLED,
+                    'response_reason' => self::PARTIAL_BLOCK_REASON,
+                    'responded_at' => now(),
+                ]);
+
+            $this->audit->record('admin.partially_blocked_service_request_cancelled', $admin, $serviceRequest, [
+                'customer_id' => $customer->id,
+            ]);
+
+            $cancelledCount++;
+        }
+
+        return $cancelledCount;
+    }
+
+    /**
+     * Cancel worker invitations that are still waiting for a reply.
+     */
+    private function cancelPendingWorkerRequests(User $worker): int
+    {
+        return ServiceRequestWorker::query()
+            ->where('worker_id', $worker->id)
+            ->where('status', ServiceRequestWorker::STATUS_PENDING)
+            ->update([
+                'status' => ServiceRequestWorker::STATUS_CANCELLED,
+                'response_reason' => self::PARTIAL_BLOCK_REASON,
+                'responded_at' => now(),
+            ]);
+    }
+
+    /**
+     * Cancel customer bookings that are still in the early pending request stage.
+     */
+    private function cancelPendingCustomerBookings(User $customer, ?User $admin): int
+    {
+        $pendingBookings = Booking::query()
+            ->with(['customer', 'service', 'payments'])
+            ->where('customer_id', $customer->id)
+            ->whereIn('status', [
+                Booking::STATUS_PENDING,
+                Booking::STATUS_REQUESTED,
+            ])
+            ->get();
+
+        return $this->cancelPendingBookings($pendingBookings, $admin);
+    }
+
+    /**
+     * Cancel worker bookings that have not advanced beyond the pending request stage.
+     */
+    private function cancelPendingWorkerBookings(User $worker, ?User $admin): int
+    {
+        $pendingBookings = $worker->workerBookings()
+            ->with(['customer', 'service', 'payments'])
+            ->whereIn('status', [
+                Booking::STATUS_PENDING,
+                Booking::STATUS_REQUESTED,
+            ])
+            ->get();
+
+        return $this->cancelPendingBookings($pendingBookings, $admin);
+    }
+
+    /**
+     * Cancel the provided pending bookings with a clear partial block reason.
+     *
+     * @param  iterable<int, Booking>  $pendingBookings
+     */
+    private function cancelPendingBookings(iterable $pendingBookings, ?User $admin): int
+    {
+        $cancelledCount = 0;
+
+        foreach ($pendingBookings as $booking) {
+            $this->cancelBlockedWorkerBooking($booking, $admin, self::PARTIAL_BLOCK_REASON);
+            $cancelledCount++;
+        }
+
+        return $cancelledCount;
+    }
+
+    /**
+     * Cancel future worker bookings after a full block so customers can be protected.
      *
      * @return array{cancelled_count: int, refund_review_count: int}
      */
-    private function cancelActiveWorkerBookings(User $worker, ?User $admin): array
+    private function cancelFutureWorkerBookings(User $worker, ?User $admin): array
     {
         $cancelledCount = 0;
         $refundReviewCount = 0;
 
-        // Active bookings are the customer commitments that must be closed immediately when a worker is blocked.
-        $activeBookings = $worker->workerBookings()
+        $futureBookings = $worker->workerBookings()
             ->with(['customer', 'service', 'payments'])
-            ->whereIn('status', Booking::ActiveStatuses)
+            ->whereIn('status', [
+                Booking::STATUS_PENDING,
+                Booking::STATUS_REQUESTED,
+                Booking::STATUS_ACCEPTED,
+                Booking::STATUS_CONFIRMED,
+            ])
             ->oldest('booking_date')
             ->get();
 
-        foreach ($activeBookings as $booking) {
-            $refundReviewCount += $this->cancelBlockedWorkerBooking($booking, $admin);
+        foreach ($futureBookings as $booking) {
+            $refundReviewCount += $this->cancelBlockedWorkerBooking($booking, $admin, self::FULL_BLOCK_REASON);
             $cancelledCount++;
         }
 
@@ -130,9 +311,9 @@ class UserManagementService
     }
 
     /**
-     * Cancel one worker booking and return one when finance must review a paid booking refund.
+     * Cancel one booking and return one when a refund review is required.
      */
-    private function cancelBlockedWorkerBooking(Booking $booking, ?User $admin): int
+    private function cancelBlockedWorkerBooking(Booking $booking, ?User $admin, string $cancelledReason): int
     {
         $oldStatus = $booking->status;
         $needsRefundReview = $this->bookingNeedsRefundReview($booking);
@@ -140,7 +321,7 @@ class UserManagementService
         $bookingUpdates = [
             'status' => Booking::STATUS_CANCELLED,
             'cancelled_by' => $admin?->id,
-            'cancelled_reason' => 'Worker blocked by admin',
+            'cancelled_reason' => $cancelledReason,
         ];
 
         // Paid bookings stay out of refunded status until finance has checked the money movement.
@@ -150,15 +331,10 @@ class UserManagementService
 
         $booking->update($bookingUpdates);
 
-        $this->recordBlockedWorkerBookingCancellation($booking, $oldStatus, $admin, $needsRefundReview);
-        $this->notifyCustomerAboutBlockedWorkerCancellation($booking);
+        $this->recordBlockedWorkerBookingCancellation($booking, $oldStatus, $admin, $needsRefundReview, $cancelledReason);
+        $this->notifyCustomerAboutBlockedWorkerCancellation($booking, $cancelledReason);
 
-        // The caller uses this count to tell admins how many paid bookings require finance review.
-        if ($needsRefundReview) {
-            return 1;
-        }
-
-        return 0;
+        return $needsRefundReview ? 1 : 0;
     }
 
     /**
@@ -166,12 +342,10 @@ class UserManagementService
      */
     private function bookingNeedsRefundReview(Booking $booking): bool
     {
-        // The booking status can already show paid before individual payment records are inspected.
         if ($booking->payment_status === Booking::PAYMENT_PAID) {
             return true;
         }
 
-        // Paid payment rows prove money was collected even if the booking summary was not updated.
         return $booking->payments->contains(function (Payment $payment): bool {
             return $payment->status === Payment::STATUS_PAID;
         });
@@ -180,18 +354,16 @@ class UserManagementService
     /**
      * Store both the booking timeline row and the admin audit row for compliance review.
      */
-    private function recordBlockedWorkerBookingCancellation(Booking $booking, string $oldStatus, ?User $admin, bool $needsRefundReview): void
+    private function recordBlockedWorkerBookingCancellation(Booking $booking, string $oldStatus, ?User $admin, bool $needsRefundReview, string $cancelledReason): void
     {
-        // Customers and admins need the booking timeline to explain why the booking ended.
         $booking->activities()->create([
             'actor_id' => $admin?->id,
             'from_status' => $oldStatus,
             'to_status' => Booking::STATUS_CANCELLED,
             'event' => 'worker_blocked_booking_cancelled',
-            'note' => 'Worker blocked by admin',
+            'note' => $cancelledReason,
         ]);
 
-        // Audit logs let admins review every booking affected by a worker block.
         $this->audit->record('admin.worker_blocked_booking_cancelled', $admin, $booking, [
             'worker_id' => $booking->worker_id,
             'customer_id' => $booking->customer_id,
@@ -200,23 +372,43 @@ class UserManagementService
     }
 
     /**
-     * Notify the customer that the platform cancelled the booking after the worker was blocked.
+     * Notify the customer that the platform cancelled the booking after a worker restriction.
      */
-    private function notifyCustomerAboutBlockedWorkerCancellation(Booking $booking): void
+    private function notifyCustomerAboutBlockedWorkerCancellation(Booking $booking, string $cancelledReason): void
     {
-        // Only existing customer accounts can receive database notifications.
         if ($booking->customer === null) {
             return;
         }
+
+        $message = $cancelledReason === self::FULL_BLOCK_REASON
+            ? 'Your booking was cancelled because the assigned worker is no longer available on the platform.'
+            : 'Your booking was cancelled because the assigned worker is temporarily restricted from taking new work.';
 
         $booking->customer->notify(new BookingWorkflowNotification(
             booking: $booking->refresh()->loadMissing('service'),
             event: 'worker_blocked_booking_cancelled',
             title: 'Booking cancelled',
-            message: 'Your booking was cancelled because the assigned worker is no longer available on the platform.',
+            message: $message,
         ));
     }
 
+    /**
+     * Return the authenticated admin when present.
+     */
+    private function currentAdmin(): ?User
+    {
+        $admin = request()->user();
+
+        if (! $admin instanceof User) {
+            return null;
+        }
+
+        return $admin;
+    }
+
+    /**
+     * Mark a user as platform verified after the required checks are complete.
+     */
     public function verify(User $user): User
     {
         $this->ensureNotAdmin($user, 'Admin accounts cannot be verified from user management.');
@@ -225,7 +417,6 @@ class UserManagementService
 
         $user->update(['is_verified' => true]);
 
-        // Worker approval must keep the profile flag in sync for booking eligibility checks.
         if ($user->hasRole('worker')) {
             $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
                 'is_verified' => true,
@@ -238,11 +429,12 @@ class UserManagementService
     }
 
     /**
+     * Delete a non-admin user from the platform.
+     *
      * @throws ValidationException
      */
     public function delete(User $user, User $admin): void
     {
-        // Admins cannot delete themselves because the platform needs at least one active operator path.
         if ($user->is($admin)) {
             throw ValidationException::withMessages([
                 'user' => ['You cannot delete your own admin account.'],
@@ -259,11 +451,12 @@ class UserManagementService
     }
 
     /**
+     * Stop admin accounts from entering customer and worker moderation flows.
+     *
      * @throws ValidationException
      */
     private function ensureNotAdmin(User $user, string $message): void
     {
-        // Admin accounts are protected from customer/worker management actions.
         if ($user->loadMissing('role')->hasRole('admin')) {
             throw ValidationException::withMessages([
                 'user' => [$message],
@@ -271,9 +464,11 @@ class UserManagementService
         }
     }
 
+    /**
+     * Ensure the user has an active email verification before admin approval.
+     */
     private function ensureEmailVerified(User $user): void
     {
-        // Email verification proves the user can receive account and booking notifications.
         if ($user->hasVerifiedEmail()) {
             return;
         }
@@ -283,19 +478,19 @@ class UserManagementService
         ]);
     }
 
+    /**
+     * Ensure a worker has an approved verification record before admin approval.
+     */
     private function ensureWorkerVerificationApproved(User $user): void
     {
-        // Customers do not need worker document approval before account verification.
         if (! $user->loadMissing('role')->hasRole('worker')) {
             return;
         }
 
-        // Workers must have approved ID proof before admins mark the account platform-verified.
         $isApproved = $user->workerVerification()
             ->where('status', WorkerVerification::STATUS_APPROVED)
             ->exists();
 
-        // Approved verification is enough to continue account approval.
         if ($isApproved) {
             return;
         }

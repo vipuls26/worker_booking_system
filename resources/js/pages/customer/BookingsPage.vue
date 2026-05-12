@@ -34,7 +34,7 @@ useDebouncedWatch(
 onMounted(() => load());
 
 function bookingDisplayStatus(booking) {
-    if (booking.requests?.some((request) => request.status === 'awaiting_reschedule')) {
+    if (booking.worker_requests?.some((request) => request.status === 'awaiting_reschedule')) {
         return 'awaiting_reschedule';
     }
 

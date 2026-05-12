@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Booking;
-use App\Models\BookingRequest;
 use App\Models\Role;
 use App\Models\Service;
 use App\Models\ServiceRequest;
@@ -64,24 +63,24 @@ class BookingAutoMatchingWorkflowTest extends TestCase
             'issue_description' => 'Fan repair needed',
         ])
             ->assertCreated()
-            ->assertJsonPath('data.booking.status', Booking::STATUS_REQUESTED)
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_OPEN)
             ->assertJsonPath('data.booking.worker', null);
 
-        $booking = Booking::query()->latest('id')->firstOrFail();
+        $serviceRequest = ServiceRequest::query()->latest('id')->firstOrFail();
 
-        $this->assertSame(Booking::STATUS_REQUESTED, $booking->status);
-        $this->assertNull($booking->worker_id);
-        $this->assertDatabaseHas('booking_requests', [
-            'booking_id' => $booking->id,
+        $this->assertSame(ServiceRequest::STATUS_OPEN, $serviceRequest->status);
+        $this->assertNull($serviceRequest->selected_worker_id);
+        $this->assertDatabaseHas('service_request_workers', [
+            'service_request_id' => $serviceRequest->id,
             'worker_id' => $availableWorker->id,
-            'status' => BookingRequest::STATUS_PENDING,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
         ]);
-        $this->assertDatabaseMissing('booking_requests', [
-            'booking_id' => $booking->id,
+        $this->assertDatabaseMissing('service_request_workers', [
+            'service_request_id' => $serviceRequest->id,
             'worker_id' => $blockedWorker->id,
         ]);
-        $this->assertDatabaseMissing('booking_requests', [
-            'booking_id' => $booking->id,
+        $this->assertDatabaseMissing('service_request_workers', [
+            'service_request_id' => $serviceRequest->id,
             'worker_id' => $busyWorker->id,
         ]);
     }
@@ -103,45 +102,50 @@ class BookingAutoMatchingWorkflowTest extends TestCase
 
         Sanctum::actingAs($customer);
 
-        $this->postJson('/api/customer/bookings', [
+        $serviceRequestId = $this->postJson('/api/customer/bookings', [
             'service_id' => $service->id,
             'booking_date' => $bookingDate,
             'start_time' => '12:00',
             'end_time' => '13:00',
             'address' => '456 Service Street',
             'issue_description' => 'AC service needed',
-        ])->assertCreated();
+        ])->assertCreated()->json('data.booking.id');
 
-        $booking = Booking::query()->latest('id')->firstOrFail();
+        ServiceRequestWorker::query()
+            ->where('service_request_id', $serviceRequestId)
+            ->update([
+                'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+                'responded_at' => now(),
+            ]);
 
-        $booking->bookingRequests()->update([
-            'status' => BookingRequest::STATUS_ACCEPTED,
-            'responded_at' => now(),
-        ]);
+        $selectedRequest = ServiceRequestWorker::query()
+            ->where('service_request_id', $serviceRequestId)
+            ->where('worker_id', $firstWorker->id)
+            ->firstOrFail();
 
-        $selectedRequest = $booking->bookingRequests()->where('worker_id', $firstWorker->id)->firstOrFail();
-
-        $this->patchJson("/api/customer/bookings/{$booking->id}/select-worker", [
-            'booking_request_id' => $selectedRequest->id,
+        $this->patchJson("/api/customer/bookings/{$serviceRequestId}/select-worker", [
+            'worker_request_id' => $selectedRequest->id,
         ])
             ->assertOk()
-            ->assertJsonPath('data.booking.status', Booking::STATUS_CONFIRMED)
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_WORKER_SELECTED)
             ->assertJsonPath('data.booking.selected_worker_id', $firstWorker->id);
 
+        $serviceRequest = ServiceRequest::query()->findOrFail($serviceRequestId);
+
         $this->assertDatabaseHas('bookings', [
-            'id' => $booking->id,
+            'service_request_id' => $serviceRequest->id,
             'worker_id' => $firstWorker->id,
             'selected_worker_id' => $firstWorker->id,
             'status' => Booking::STATUS_CONFIRMED,
         ]);
-        $this->assertDatabaseHas('booking_requests', [
+        $this->assertDatabaseHas('service_request_workers', [
             'id' => $selectedRequest->id,
-            'status' => BookingRequest::STATUS_SELECTED,
+            'status' => ServiceRequestWorker::STATUS_SELECTED,
         ]);
-        $this->assertDatabaseHas('booking_requests', [
-            'booking_id' => $booking->id,
+        $this->assertDatabaseHas('service_request_workers', [
+            'service_request_id' => $serviceRequest->id,
             'worker_id' => $secondWorker->id,
-            'status' => BookingRequest::STATUS_AUTO_CANCELLED,
+            'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
         ]);
     }
 
@@ -190,9 +194,9 @@ class BookingAutoMatchingWorkflowTest extends TestCase
             'status' => ServiceRequestWorker::STATUS_ACCEPTED,
         ])
             ->assertOk()
-            ->assertJsonPath('data.booking_request.status', ServiceRequestWorker::STATUS_SELECTED)
-            ->assertJsonPath('data.booking_request.service_request.status', ServiceRequest::STATUS_WORKER_SELECTED)
-            ->assertJsonPath('data.booking_request.service_request.selected_worker_id', $worker->id);
+            ->assertJsonPath('data.worker_request.status', ServiceRequestWorker::STATUS_SELECTED)
+            ->assertJsonPath('data.worker_request.service_request.status', ServiceRequest::STATUS_WORKER_SELECTED)
+            ->assertJsonPath('data.worker_request.service_request.selected_worker_id', $worker->id);
 
         Notification::assertSentTo(
             $customer,
@@ -296,10 +300,10 @@ class BookingAutoMatchingWorkflowTest extends TestCase
         Sanctum::actingAs($customer);
 
         $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/select-worker", [
-            'booking_request_id' => $serviceRequestWorker->id,
+            'worker_request_id' => $serviceRequestWorker->id,
         ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('booking_request_id');
+            ->assertJsonValidationErrors('worker_request_id');
 
         $this->assertDatabaseMissing('bookings', [
             'service_request_id' => $serviceRequest->id,

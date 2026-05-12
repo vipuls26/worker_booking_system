@@ -97,7 +97,7 @@ class BookingController extends Controller
             'message' => 'Worker selected successfully',
             'data' => [
                 'booking' => new ServiceRequestResource(
-                    $this->bookings->selectFinalWorker($booking, $request->user(), $request->integer('booking_request_id')),
+                    $this->bookings->selectFinalWorker($booking, $request->user(), $request->integer('worker_request_id')),
                 ),
             ],
         ]);

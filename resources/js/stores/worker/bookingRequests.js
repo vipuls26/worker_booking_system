@@ -20,7 +20,7 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
 
             try {
                 const response = await bookingRequestsApi.listBookingRequests({ ...this.filters, page });
-                this.bookingRequests = response.data.data.booking_requests;
+                this.bookingRequests = response.data.data.worker_requests;
                 this.meta = response.data.data.meta;
 
                 return response.data;
@@ -34,7 +34,7 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
 
             try {
                 const response = await bookingRequestsApi.getBookingRequest(id);
-                this.bookingRequest = response.data.data.booking_request;
+                this.bookingRequest = response.data.data.worker_request;
 
                 return response.data;
             } finally {
@@ -47,7 +47,7 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
 
             try {
                 const response = await bookingRequestsApi.respondToBookingRequest(id, payload);
-                const updatedRequest = response.data.data.booking_request;
+                const updatedRequest = response.data.data.worker_request;
                 this.bookingRequest = updatedRequest;
                 this.bookingRequests = this.bookingRequests.map((bookingRequest) => (
                     bookingRequest.id === updatedRequest.id ? updatedRequest : bookingRequest

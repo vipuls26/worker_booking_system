@@ -50,7 +50,6 @@ class BookingResource extends JsonResource
             'cancelled_by_user' => new UserResource($this->whenLoaded('cancelledBy')),
             'cancelled_reason' => $this->cancelled_reason,
             'rejection_reason' => $this->rejection_reason,
-            'requests' => BookingRequestResource::collection($this->whenLoaded('bookingRequests')),
             'timeline' => BookingActivityResource::collection($this->whenLoaded('activities')),
             'review' => new ReviewResource($this->whenLoaded('review')),
             'worker_review' => new ReviewResource($this->whenLoaded('workerReview')),

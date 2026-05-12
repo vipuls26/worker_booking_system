@@ -96,17 +96,17 @@ onMounted(load);
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
-                                <h2 class="font-semibold text-gray-900 dark:text-white">{{ bookingRequest.booking?.service?.name }}</h2>
+                                <h2 class="font-semibold text-gray-900 dark:text-white">{{ bookingRequest.service_request?.service?.name }}</h2>
                                 <span class="rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="statusClass(bookingRequest.status)">
                                     {{ bookingRequest.status.replace('_', ' ') }}
                                 </span>
                             </div>
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                {{ bookingRequest.booking?.customer?.name }} · {{ bookingRequest.booking?.booking_date }}
-                                {{ bookingRequest.booking?.start_time }} - {{ bookingRequest.booking?.end_time }}
+                                {{ bookingRequest.service_request?.customer?.name }} · {{ bookingRequest.service_request?.booking_date }}
+                                {{ bookingRequest.service_request?.start_time }} - {{ bookingRequest.service_request?.end_time }}
                             </p>
-                            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ bookingRequest.booking?.issue_description }}</p>
-                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ bookingRequest.booking?.address }}</p>
+                            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ bookingRequest.service_request?.issue_description }}</p>
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ bookingRequest.service_request?.address }}</p>
                             <p class="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
                                 <i class="pi pi-info-circle" aria-hidden="true"></i>
                                 Accept to join the customer's shortlist. Final booking starts only if the customer selects you.

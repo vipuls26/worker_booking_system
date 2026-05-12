@@ -211,7 +211,7 @@ class BookingService
         return DB::transaction(function () use ($serviceRequest, $customer, $serviceRequestWorkerId): ServiceRequest {
             // Customers can only choose a final worker while the request is still open.
             if ($serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
-                throw ValidationException::withMessages(['booking_request_id' => ['This booking is not waiting for worker selection.']]);
+                throw ValidationException::withMessages(['worker_request_id' => ['This booking is not waiting for worker selection.']]);
             }
 
             // Only accepted worker responses are eligible for customer selection.
@@ -451,7 +451,7 @@ class BookingService
             'end_time' => $serviceRequest->end_time,
         ]);
 
-        $this->ensureWorkerCanReceiveBooking($serviceRequestWorker->worker, 'booking_request_id');
+        $this->ensureWorkerCanReceiveBooking($serviceRequestWorker->worker, 'worker_request_id');
 
         // A selected worker must still be eligible and free at the final confirmation moment.
         if (! $serviceRequestWorker->worker || ! $this->availability->isWorkerAvailable(
@@ -461,7 +461,7 @@ class BookingService
             durationMinutes: $durationMinutes,
             ignoreServiceRequestId: $serviceRequest->id,
         )) {
-            throw ValidationException::withMessages(['booking_request_id' => ['This worker is no longer available for the selected slot.']]);
+            throw ValidationException::withMessages(['worker_request_id' => ['This worker is no longer available for the selected slot.']]);
         }
 
         $totalAmount = (float) ($serviceRequestWorker->quoted_price ?: $serviceRequest->estimated_amount);

@@ -40,18 +40,16 @@ class Booking extends Model
 
     public const DefaultCommissionRate = 10.00;
 
-    public const ActiveStatuses = [
-        self::STATUS_PENDING,
-        self::STATUS_REQUESTED,
+    public const BLOCKING_STATUSES = [
         self::STATUS_ACCEPTED,
         self::STATUS_CONFIRMED,
         self::STATUS_IN_PROGRESS,
     ];
 
-    public const BookingOverlapStatuses = [
-        self::STATUS_ACCEPTED,
-        self::STATUS_CONFIRMED,
-        self::STATUS_IN_PROGRESS,
+    public const ActiveStatuses = [
+        self::STATUS_PENDING,
+        self::STATUS_REQUESTED,
+        ...self::BLOCKING_STATUSES,
     ];
 
     /** @use HasFactory<BookingFactory> */

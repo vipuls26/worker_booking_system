@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Booking;
 use App\Models\Role;
 use App\Models\Service;
 use App\Models\User;
@@ -49,6 +50,51 @@ class CustomerWorkerSearchTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.workers.0.id', $worker->id)
             ->assertJsonPath('data.workers.0.services.0.service.name', 'AC Repair');
+    }
+
+    public function test_customer_search_hides_worker_with_blocking_booking_from_another_service(): void
+    {
+        Sanctum::actingAs($this->customerUser());
+
+        $worker = $this->workerUser();
+        $searchService = Service::factory()->create(['name' => 'AC Repair', 'slug' => 'ac-repair']);
+        $otherService = Service::factory()->create(['name' => 'Plumbing', 'slug' => 'plumbing']);
+
+        WorkerProfile::factory()->create([
+            'user_id' => $worker->id,
+            'city' => 'Mumbai',
+            'is_verified' => true,
+        ]);
+
+        WorkerService::factory()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $searchService->id,
+            'price' => 500,
+            'is_active' => true,
+            'approval_status' => WorkerService::StatusApproved,
+        ]);
+
+        WorkerSchedule::factory()->create([
+            'worker_id' => $worker->id,
+            'day_of_week' => 1,
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+        ]);
+
+        Booking::factory()->create([
+            'worker_id' => $worker->id,
+            'customer_id' => $this->customerUser()->id,
+            'service_id' => $otherService->id,
+            'booking_date' => '2026-05-11',
+            'booking_time' => '10:00',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        $this->getJson('/api/customer/workers?service_id='.$searchService->id.'&available_date=2026-05-11&available_time=10:30')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.workers');
     }
 
     public function test_customer_can_view_worker_details(): void

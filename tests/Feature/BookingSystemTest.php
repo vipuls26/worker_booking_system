@@ -105,6 +105,38 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('errors.start_time.0', 'This worker already has a booking that overlaps the selected time.');
     }
 
+    public function test_booking_creation_rejects_overlapping_booking_from_another_service(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $otherService = Service::factory()->create(['is_active' => true]);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $otherService->id,
+            'booking_date' => '2026-05-11',
+            'booking_time' => '10:00',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/customer/bookings', [
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '10:30',
+            'end_time' => '11:30',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need help.',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('start_time')
+            ->assertJsonPath('errors.start_time.0', 'This worker already has a booking that overlaps the selected time.');
+    }
+
     public function test_booking_creation_rejects_worker_off_day(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();
@@ -760,6 +792,84 @@ class BookingSystemTest extends TestCase
         ]);
     }
 
+    public function test_customer_cannot_reschedule_request_to_a_past_date(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-11 10:30:00');
+
+        try {
+            [$customer, $worker, $service] = $this->bookingActors();
+
+            $serviceRequest = ServiceRequest::factory()->create([
+                'customer_id' => $customer->id,
+                'service_id' => $service->id,
+                'requested_date' => '2026-05-11',
+                'start_time' => '12:00',
+                'end_time' => '13:00',
+                'status' => ServiceRequest::STATUS_OPEN,
+            ]);
+            ServiceRequestWorker::factory()->create([
+                'service_request_id' => $serviceRequest->id,
+                'worker_id' => $worker->id,
+                'status' => ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+                'response_reason' => 'Worker is no longer available for selected time slot.',
+                'responded_at' => now(),
+            ]);
+
+            Sanctum::actingAs($customer);
+
+            $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/reschedule", [
+                'booking_date' => '2026-05-10',
+                'start_time' => '12:00',
+                'end_time' => '13:00',
+                'duration_minutes' => 60,
+            ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('booking_date')
+                ->assertJsonPath('errors.booking_date.0', 'The booking date must be today or a future date.');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_customer_cannot_reschedule_request_to_a_past_time_today(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-11 10:30:00');
+
+        try {
+            [$customer, $worker, $service] = $this->bookingActors();
+
+            $serviceRequest = ServiceRequest::factory()->create([
+                'customer_id' => $customer->id,
+                'service_id' => $service->id,
+                'requested_date' => '2026-05-11',
+                'start_time' => '12:00',
+                'end_time' => '13:00',
+                'status' => ServiceRequest::STATUS_OPEN,
+            ]);
+            ServiceRequestWorker::factory()->create([
+                'service_request_id' => $serviceRequest->id,
+                'worker_id' => $worker->id,
+                'status' => ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+                'response_reason' => 'Worker is no longer available for selected time slot.',
+                'responded_at' => now(),
+            ]);
+
+            Sanctum::actingAs($customer);
+
+            $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/reschedule", [
+                'booking_date' => '2026-05-11',
+                'start_time' => '10:00',
+                'end_time' => '11:00',
+                'duration_minutes' => 60,
+            ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('start_time')
+                ->assertJsonPath('errors.start_time.0', 'Please choose the current time or a future time.');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
     public function test_worker_must_provide_reason_when_cancelling_booking(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();
@@ -986,6 +1096,47 @@ class BookingSystemTest extends TestCase
             'actor_id' => $customer->id,
             'event' => 'worker_selected',
         ]);
+    }
+
+    public function test_worker_acceptance_rejects_overlap_from_another_service(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $otherService = Service::factory()->create(['is_active' => true]);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $otherService->id,
+            'booking_date' => '2026-05-11',
+            'booking_time' => '10:00',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'status' => Booking::STATUS_ACCEPTED,
+        ]);
+
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => '2026-05-11',
+            'start_time' => '10:30',
+            'end_time' => '11:30',
+            'status' => ServiceRequest::STATUS_OPEN,
+        ]);
+
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status')
+            ->assertJsonPath('errors.status.0', 'You are no longer available for this booking slot.');
     }
 
     /**

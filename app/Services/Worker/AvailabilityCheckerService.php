@@ -2,16 +2,16 @@
 
 namespace App\Services\Worker;
 
-use App\Models\Booking;
-use App\Models\ServiceRequest;
-use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
 use App\Models\WorkerService;
+use App\Services\Booking\BookingConflictService;
 use Carbon\CarbonImmutable;
 
 class AvailabilityCheckerService
 {
+    public function __construct(private readonly BookingConflictService $bookingConflicts) {}
+
     /**
      * Return the current application time as an immutable value so date-sensitive slot checks stay consistent.
      */
@@ -133,67 +133,12 @@ class AvailabilityCheckerService
 
     private function overlapReason(User $worker, string $date, string $startTime, string $endTime): ?string
     {
-        // Confirmed or active bookings block the same worker from being offered again.
-        $hasConfirmedBooking = Booking::query()
-            ->select(['booking_time', 'start_time', 'end_time'])
-            ->where('worker_id', $worker->id)
-            ->whereDate('booking_date', $date)
-            ->whereIn('status', Booking::ActiveStatuses)
-            ->get()
-            ->contains(fn (Booking $booking): bool => $this->overlaps($booking, $date, $startTime, $endTime));
-
-        // Existing bookings take precedence over tentative request reservations in the UI.
-        if ($hasConfirmedBooking) {
-            return 'booked';
-        }
-
-        // Accepted service requests reserve the worker until the customer chooses a final worker.
-        if ($this->hasAcceptedRequestOverlap($worker, $date, $startTime, $endTime)) {
-            return 'reserved';
-        }
-
-        return null;
-    }
-
-    private function hasAcceptedRequestOverlap(User $worker, string $date, string $startTime, string $endTime): bool
-    {
-        // Pending customer selection should still protect accepted workers from double booking.
-        return ServiceRequestWorker::query()
-            ->where('worker_id', $worker->id)
-            ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
-            ->whereHas('serviceRequest', function ($query) use ($date): void {
-                $query
-                    ->whereDate('requested_date', $date)
-                    ->where('status', ServiceRequest::STATUS_OPEN);
-            })
-            ->with('serviceRequest:id,requested_date,start_time,end_time')
-            ->get()
-            ->contains(function (ServiceRequestWorker $serviceRequestWorker) use ($date, $startTime, $endTime): bool {
-                // Missing parent requests are ignored so stale rows do not block worker availability.
-                if ($serviceRequestWorker->serviceRequest === null) {
-                    return false;
-                }
-
-                $booking = new Booking([
-                    'booking_time' => $serviceRequestWorker->serviceRequest->start_time,
-                    'start_time' => $serviceRequestWorker->serviceRequest->start_time,
-                    'end_time' => $serviceRequestWorker->serviceRequest->end_time,
-                ]);
-
-                return $this->overlaps($booking, $date, $startTime, $endTime);
-            });
-    }
-
-    private function overlaps(Booking $booking, string $date, string $startTime, string $endTime): bool
-    {
-        $bookingStart = CarbonImmutable::parse($date.' '.($booking->start_time ?: $booking->booking_time));
-        $bookingEnd = $booking->end_time
-            ? CarbonImmutable::parse($date.' '.$booking->end_time)
-            : $bookingStart->addHour();
-        $slotStart = CarbonImmutable::parse($date.' '.$startTime);
-        $slotEnd = CarbonImmutable::parse($date.' '.$endTime);
-
-        return $bookingStart->lessThan($slotEnd) && $bookingEnd->greaterThan($slotStart);
+        return $this->bookingConflicts->conflictReason(
+            workerId: $worker->id,
+            bookingDate: $date,
+            startTime: $startTime,
+            endTime: $endTime,
+        );
     }
 
     private function estimatedTotal(WorkerService $workerService, int $durationMinutes): float

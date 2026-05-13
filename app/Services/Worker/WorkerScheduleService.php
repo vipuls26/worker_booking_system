@@ -2,16 +2,16 @@
 
 namespace App\Services\Worker;
 
-use App\Models\Booking;
-use App\Models\ServiceRequest;
-use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerSchedule;
+use App\Services\Booking\BookingConflictService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 
 class WorkerScheduleService
 {
+    public function __construct(private readonly BookingConflictService $bookingConflicts) {}
+
     /**
      * @return Collection<int, WorkerSchedule>
      */
@@ -132,20 +132,14 @@ class WorkerScheduleService
      */
     public function hasOverlappingBooking(User $worker, string $bookingDate, string $startTime, string $endTime, ?int $ignoreBookingId = null, ?int $ignoreServiceRequestId = null): bool
     {
-        // Accepted, confirmed, and in-progress bookings block the worker from taking an overlapping slot.
-        $hasBookingOverlap = Booking::query()
-            ->where('worker_id', $worker->id)
-            ->when($ignoreBookingId, fn ($query) => $query->whereKeyNot($ignoreBookingId))
-            ->whereDate('booking_date', $bookingDate)
-            ->whereIn('status', Booking::BookingOverlapStatuses)
-            ->get(['id', 'booking_time', 'start_time', 'end_time'])
-            ->contains(fn (Booking $booking): bool => $this->bookingOverlaps($booking, $bookingDate, $startTime, $endTime));
-
-        if ($hasBookingOverlap) {
-            return true;
-        }
-
-        return $this->hasAcceptedRequestOverlap($worker, $bookingDate, $startTime, $endTime, $ignoreServiceRequestId);
+        return $this->bookingConflicts->hasConflict(
+            workerId: $worker->id,
+            bookingDate: $bookingDate,
+            startTime: $startTime,
+            endTime: $endTime,
+            ignoreBookingId: $ignoreBookingId,
+            ignoreServiceRequestId: $ignoreServiceRequestId,
+        );
     }
 
     /**
@@ -172,53 +166,5 @@ class WorkerScheduleService
             ->where('start_time', '<=', $startDateTime->format('H:i:s'))
             ->where('end_time', '>=', $endDateTime->format('H:i:s'))
             ->exists();
-    }
-
-    /**
-     * Check accepted service requests that temporarily reserve worker availability.
-     */
-    private function hasAcceptedRequestOverlap(User $worker, string $bookingDate, string $startTime, string $endTime, ?int $ignoreServiceRequestId = null): bool
-    {
-        // Accepted open service requests reserve the worker until customer selection is resolved.
-        return ServiceRequestWorker::query()
-            ->where('worker_id', $worker->id)
-            ->where('status', ServiceRequestWorker::STATUS_ACCEPTED)
-            ->whereHas('serviceRequest', function ($query) use ($bookingDate, $ignoreServiceRequestId): void {
-                $query
-                    ->whereDate('requested_date', $bookingDate)
-                    ->where('status', ServiceRequest::STATUS_OPEN)
-                    ->when($ignoreServiceRequestId, fn ($query) => $query->whereKeyNot($ignoreServiceRequestId));
-            })
-            ->with('serviceRequest:id,requested_date,start_time,end_time')
-            ->get()
-            ->contains(function (ServiceRequestWorker $serviceRequestWorker) use ($bookingDate, $startTime, $endTime): bool {
-                // Stale worker request rows should not block future availability.
-                if ($serviceRequestWorker->serviceRequest === null) {
-                    return false;
-                }
-
-                $booking = new Booking([
-                    'booking_time' => $serviceRequestWorker->serviceRequest->start_time,
-                    'start_time' => $serviceRequestWorker->serviceRequest->start_time,
-                    'end_time' => $serviceRequestWorker->serviceRequest->end_time,
-                ]);
-
-                return $this->bookingOverlaps($booking, $bookingDate, $startTime, $endTime);
-            });
-    }
-
-    /**
-     * Compare two booking windows for any shared time.
-     */
-    private function bookingOverlaps(Booking $booking, string $bookingDate, string $startTime, string $endTime): bool
-    {
-        $bookingStart = CarbonImmutable::parse($bookingDate.' '.($booking->start_time ?: $booking->booking_time));
-        $bookingEnd = $booking->end_time
-            ? CarbonImmutable::parse($bookingDate.' '.$booking->end_time)
-            : $bookingStart->addHour();
-        $slotStart = CarbonImmutable::parse($bookingDate.' '.$startTime);
-        $slotEnd = CarbonImmutable::parse($bookingDate.' '.$endTime);
-
-        return $bookingStart->lessThan($slotEnd) && $bookingEnd->greaterThan($slotStart);
     }
 }

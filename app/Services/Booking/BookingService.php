@@ -26,6 +26,7 @@ class BookingService
         private readonly BookingWorkflowService $workflow,
         private readonly WorkerMatchingService $workerMatching,
         private readonly AvailabilityService $availability,
+        private readonly BookingConflictService $bookingConflicts,
         private readonly WorkerScheduleService $workerSchedules,
         private readonly AuditLogger $audit,
         private readonly CommissionSettingService $commissionSettings,
@@ -163,62 +164,99 @@ class BookingService
     {
         abort_if($serviceRequestWorker->worker_id !== $worker->id, 404);
 
-        // Partially blocked workers cannot accept new work while the restriction is active.
-        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && ! $worker->canTakeNewWork()) {
-            throw ValidationException::withMessages([
-                'account' => ['Your account is temporarily restricted from accepting new booking requests.'],
-            ]);
-        }
+        return DB::transaction(function () use ($serviceRequestWorker, $worker, $status, $reason): ServiceRequestWorker {
+            $lockedRequestWorker = ServiceRequestWorker::query()
+                ->with(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role'])
+                ->lockForUpdate()
+                ->findOrFail($serviceRequestWorker->id);
 
-        // A worker response is final for the pending invitation to avoid conflicting quotes.
-        if ($serviceRequestWorker->status !== ServiceRequestWorker::STATUS_PENDING) {
-            throw ValidationException::withMessages(['status' => ['This request has already been answered.']]);
-        }
-
-        // Closed service requests cannot accept new worker responses after customer action or cancellation.
-        if ($serviceRequestWorker->serviceRequest()->where('status', '!=', ServiceRequest::STATUS_OPEN)->exists()) {
-            throw ValidationException::withMessages(['status' => ['This booking request is no longer open.']]);
-        }
-
-        // Accepted responses reserve real availability, so re-check eligibility and schedule before saving.
-        if ($status === ServiceRequestWorker::STATUS_ACCEPTED) {
-            $this->ensureWorkerCanReceiveBooking($worker, 'status');
-
-            $serviceRequest = $serviceRequestWorker->serviceRequest;
-            $durationMinutes = $this->durationMinutes([
-                'booking_date' => $serviceRequest->requested_date->toDateString(),
-                'start_time' => $serviceRequest->start_time,
-                'end_time' => $serviceRequest->end_time,
-            ]);
-
-            // Worker availability may have changed since the customer first opened the request.
-            if (! $this->availability->isWorkerAvailable($worker, $serviceRequest->requested_date->toDateString(), $serviceRequest->start_time, $durationMinutes)) {
-                throw ValidationException::withMessages(['status' => ['You are no longer available for this booking slot.']]);
+            // A worker response is final for the pending invitation to avoid conflicting quotes.
+            if ($lockedRequestWorker->status !== ServiceRequestWorker::STATUS_PENDING) {
+                throw ValidationException::withMessages(['status' => ['This request has already been answered.']]);
             }
-        }
 
-        $serviceRequestWorker->update([
-            'status' => $status,
-            'response_reason' => $reason,
-            'responded_at' => now(),
-        ]);
+            $lockedServiceRequest = ServiceRequest::query()
+                ->with('customer.role')
+                ->lockForUpdate()
+                ->findOrFail($lockedRequestWorker->service_request_id);
 
-        $serviceRequestWorker = $serviceRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'worker.role']);
-        $this->notifyCustomerAboutWorkerResponse($serviceRequestWorker);
+            // Closed service requests cannot accept new worker responses after customer action or cancellation.
+            if ($lockedServiceRequest->status !== ServiceRequest::STATUS_OPEN) {
+                throw ValidationException::withMessages(['status' => ['This booking request is no longer open.']]);
+            }
 
-        $this->audit->record('service_request_worker.responded', $worker, $serviceRequestWorker, [
-            'service_request_id' => $serviceRequestWorker->service_request_id,
-            'status' => $serviceRequestWorker->status,
-            'response_reason' => $serviceRequestWorker->response_reason,
-            'service_id' => $serviceRequestWorker->serviceRequest?->service_id,
-        ]);
+            // Accepted responses reserve real availability, so re-check eligibility inside the lock window.
+            if ($status === ServiceRequestWorker::STATUS_ACCEPTED) {
+                // Partially blocked workers cannot accept new work while the restriction is active.
+                if (! $worker->canTakeNewWork()) {
+                    throw ValidationException::withMessages([
+                        'account' => ['Your account is temporarily restricted from accepting new booking requests.'],
+                    ]);
+                }
 
-        // A one-worker request can become a confirmed booking as soon as that worker accepts.
-        if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $serviceRequestWorker->serviceRequest->workers()->count() === 1) {
-            return $this->selectSingleAcceptedWorkerRequest($serviceRequestWorker, $worker);
-        }
+                // Lock the worker row before claiming the slot so concurrent accepts cannot race.
+                $lockedWorker = User::query()
+                    ->with('workerProfile')
+                    ->lockForUpdate()
+                    ->find($worker->id);
 
-        return $serviceRequestWorker;
+                $this->ensureWorkerCanReceiveBooking($lockedWorker, 'status');
+
+                // The overlap check must run again inside the transaction before the acceptance is saved.
+                if ($this->bookingConflicts->hasConflict(
+                    workerId: $worker->id,
+                    bookingDate: $lockedServiceRequest->requested_date->toDateString(),
+                    startTime: $lockedServiceRequest->start_time,
+                    endTime: $lockedServiceRequest->end_time,
+                    ignoreServiceRequestId: $lockedServiceRequest->id,
+                )) {
+                    throw ValidationException::withMessages(['status' => ['You are no longer available for this booking slot.']]);
+                }
+
+                $durationMinutes = $this->durationMinutes([
+                    'booking_date' => $lockedServiceRequest->requested_date->toDateString(),
+                    'start_time' => $lockedServiceRequest->start_time,
+                    'end_time' => $lockedServiceRequest->end_time,
+                ]);
+
+                // Frontend availability is only advisory, so the backend checks the schedule again here.
+                if (! $lockedWorker || ! $this->availability->isWorkerAvailable(
+                    worker: $lockedWorker,
+                    date: $lockedServiceRequest->requested_date->toDateString(),
+                    startTime: $lockedServiceRequest->start_time,
+                    durationMinutes: $durationMinutes,
+                    ignoreServiceRequestId: $lockedServiceRequest->id,
+                )) {
+                    throw ValidationException::withMessages(['status' => ['You are no longer available for this booking slot.']]);
+                }
+            }
+
+            $lockedRequestWorker->update([
+                'status' => $status,
+                'response_reason' => $reason,
+                'responded_at' => now(),
+            ]);
+
+            // A one-worker request can become a confirmed booking as soon as that worker accepts.
+            if ($status === ServiceRequestWorker::STATUS_ACCEPTED && $lockedServiceRequest->workers()->count() === 1) {
+                $this->finalizeWorkerSelection($lockedServiceRequest, $lockedRequestWorker, $worker);
+
+                $lockedRequestWorker = $lockedRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']);
+            } else {
+                $lockedRequestWorker = $lockedRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']);
+            }
+
+            $this->notifyCustomerAboutWorkerResponse($lockedRequestWorker);
+
+            $this->audit->record('service_request_worker.responded', $worker, $lockedRequestWorker, [
+                'service_request_id' => $lockedRequestWorker->service_request_id,
+                'status' => $lockedRequestWorker->status,
+                'response_reason' => $lockedRequestWorker->response_reason,
+                'service_id' => $lockedRequestWorker->serviceRequest?->service_id,
+            ]);
+
+            return $lockedRequestWorker;
+        });
     }
 
     public function selectFinalWorker(ServiceRequest $serviceRequest, User $customer, int $serviceRequestWorkerId): ServiceRequest
@@ -525,6 +563,7 @@ class BookingService
     {
         // Lock the worker row so only one booking confirmation can claim the slot at one time.
         $lockedWorker = User::query()
+            ->with('workerProfile')
             ->lockForUpdate()
             ->find($serviceRequestWorker->worker_id);
 
@@ -535,6 +574,17 @@ class BookingService
         ]);
 
         $this->ensureWorkerCanReceiveBooking($lockedWorker, 'worker_request_id');
+
+        // The booking overlap must be re-checked inside the transaction before the booking row is saved.
+        if ($this->bookingConflicts->hasConflict(
+            workerId: $serviceRequestWorker->worker_id,
+            bookingDate: $serviceRequest->requested_date->toDateString(),
+            startTime: $serviceRequest->start_time,
+            endTime: $serviceRequest->end_time,
+            ignoreServiceRequestId: $serviceRequest->id,
+        )) {
+            throw ValidationException::withMessages(['worker_request_id' => ['This worker is no longer available for the selected slot.']]);
+        }
 
         // A selected worker must still be eligible and free at the final confirmation moment.
         if (! $lockedWorker || ! $this->availability->isWorkerAvailable(
@@ -635,19 +685,7 @@ class BookingService
         $conflictMessage = 'Worker is no longer available for selected time slot.';
 
         // Find open pending requests for the same worker that overlap the newly created booking.
-        $overlappingRequests = ServiceRequestWorker::query()
-            ->with(['serviceRequest.customer', 'serviceRequest.service'])
-            ->where('worker_id', $booking->worker_id)
-            ->where('status', ServiceRequestWorker::STATUS_PENDING)
-            ->whereKeyNot($selectedRequestId)
-            ->whereHas('serviceRequest', function ($query) use ($booking): void {
-                $query
-                    ->where('status', ServiceRequest::STATUS_OPEN)
-                    ->whereDate('requested_date', $booking->booking_date?->toDateString())
-                    ->where('start_time', '<', $booking->end_time)
-                    ->where('end_time', '>', $booking->start_time);
-            })
-            ->get();
+        $overlappingRequests = $this->bookingConflicts->overlappingPendingRequestsForBooking($booking, $selectedRequestId);
 
         foreach ($overlappingRequests as $overlappingRequest) {
             $overlappingRequest->update([

@@ -2,11 +2,9 @@
 
 namespace App\Services\Customer;
 
-use App\Models\Booking;
-use App\Models\ServiceRequest;
-use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerService;
+use App\Services\Booking\BookingConflictService;
 use App\Services\Worker\AvailabilityCheckerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -15,7 +13,10 @@ use Illuminate\Support\Collection;
 
 class WorkerSearchService
 {
-    public function __construct(private readonly AvailabilityCheckerService $availability) {}
+    public function __construct(
+        private readonly AvailabilityCheckerService $availability,
+        private readonly BookingConflictService $bookingConflicts,
+    ) {}
 
     public function paginate(Request $request): LengthAwarePaginator
     {
@@ -179,28 +180,12 @@ class WorkerSearchService
             ->addMinutes($durationMinutes)
             ->format('H:i:s');
 
-        $query->whereDoesntHave('workerBookings', function ($query) use ($request, $time, $endTime): void {
-            $query
-                ->whereDate('booking_date', $request->string('available_date')->toString())
-                ->whereIn('status', Booking::ActiveStatuses)
-                ->where(function ($query) use ($time, $endTime): void {
-                    $query
-                        ->where('start_time', '<', $endTime)
-                        ->where('end_time', '>', $time);
-                });
-        });
-
-        $query->whereNotIn('users.id', function ($query) use ($request, $time, $endTime): void {
-            $query
-                ->select('service_request_workers.worker_id')
-                ->from('service_request_workers')
-                ->join('service_requests', 'service_requests.id', '=', 'service_request_workers.service_request_id')
-                ->where('service_request_workers.status', ServiceRequestWorker::STATUS_ACCEPTED)
-                ->where('service_requests.status', ServiceRequest::STATUS_OPEN)
-                ->whereDate('service_requests.requested_date', $request->string('available_date')->toString())
-                ->where('service_requests.start_time', '<', $endTime)
-                ->where('service_requests.end_time', '>', $time);
-        });
+        $this->bookingConflicts->excludeConflictingWorkers(
+            query: $query,
+            bookingDate: $request->string('available_date')->toString(),
+            startTime: $time,
+            endTime: $endTime,
+        );
     }
 
     private function applyRatingFilter($query, Request $request): void

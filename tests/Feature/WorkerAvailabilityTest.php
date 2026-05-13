@@ -90,7 +90,9 @@ class WorkerAvailabilityTest extends TestCase
             'service_id' => Service::factory()->create()->id,
             'booking_date' => '2026-05-11',
             'booking_time' => '10:00',
-            'status' => Booking::STATUS_PENDING,
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'status' => Booking::STATUS_CONFIRMED,
         ]);
 
         $this->getJson('/api/worker/availability?date=2026-05-11&slot_minutes=60')
@@ -101,6 +103,34 @@ class WorkerAvailabilityTest extends TestCase
             ->assertJsonPath('data.slots.1.available', false)
             ->assertJsonPath('data.slots.2.time', '11:00')
             ->assertJsonPath('data.slots.2.available', true);
+    }
+
+    public function test_availability_slots_ignore_pending_booking_but_block_confirmed_booking(): void
+    {
+        Sanctum::actingAs($worker = $this->workerUser());
+
+        WorkerSchedule::factory()->create([
+            'worker_id' => $worker->id,
+            'day_of_week' => 1,
+            'start_time' => '09:00',
+            'end_time' => '12:00',
+        ]);
+
+        Booking::factory()->create([
+            'worker_id' => $worker->id,
+            'customer_id' => $this->customerUser()->id,
+            'service_id' => Service::factory()->create()->id,
+            'booking_date' => '2026-05-11',
+            'booking_time' => '10:00',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'status' => Booking::STATUS_PENDING,
+        ]);
+
+        $this->getJson('/api/worker/availability?date=2026-05-11&slot_minutes=60')
+            ->assertOk()
+            ->assertJsonPath('data.slots.1.time', '10:00')
+            ->assertJsonPath('data.slots.1.available', true);
     }
 
     public function test_availability_slots_offer_later_today_start_times_after_current_time(): void

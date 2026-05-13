@@ -1,4 +1,4 @@
-<script setup>
+ <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, RouterLink, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
@@ -79,6 +79,10 @@ const bookingDisplayStatus = computed(() => (needsReschedule.value ? 'awaiting_r
 const bookingDisplayWorkerName = computed(() => awaitingRescheduleRequests.value[0]?.worker?.name || booking.value?.worker?.name || 'Awaiting final worker');
 const quickRescheduleSlots = ref([]);
 const quickRescheduleLoading = ref(false);
+const frontendErrors = reactive({
+    booking_date: [],
+    start_time: [],
+});
 const reviewForm = reactive({
     rating: 0,
     review: '',
@@ -101,6 +105,8 @@ const disputeCategories = [
     { label: 'Customer issue', value: 'customer_issue' },
     { label: 'Other', value: 'other' },
 ];
+const minimumRescheduleDate = computed(() => localDateString());
+const minimumRescheduleTime = computed(() => rescheduleForm.booking_date === minimumRescheduleDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
 
 async function load() {
     try {
@@ -134,6 +140,11 @@ async function selectWorker(bookingRequest) {
 
 async function reschedule() {
     clearApiErrors();
+    clearFrontendErrors();
+
+    if (! validateRescheduleSchedule()) {
+        return;
+    }
 
     try {
         await bookingsStore.reschedule(route.params.id, rescheduleForm);
@@ -144,6 +155,11 @@ async function reschedule() {
         setApiError(error);
         toast.error(error.response?.data?.message || 'Unable to reschedule booking');
     }
+}
+
+function clearFrontendErrors() {
+    frontendErrors.booking_date = [];
+    frontendErrors.start_time = [];
 }
 
 async function payBooking() {
@@ -374,6 +390,24 @@ function syncRescheduleForm() {
     rescheduleForm.duration_minutes = calculateDurationMinutes(rescheduleForm.start_time, rescheduleForm.end_time);
 }
 
+function validateRescheduleSchedule() {
+    // Customers should not be able to move a booking onto a day that already passed.
+    if (rescheduleForm.booking_date && rescheduleForm.booking_date < minimumRescheduleDate.value) {
+        frontendErrors.booking_date = ['Please choose today or a future date.'];
+
+        return false;
+    }
+
+    // Same-day reschedules must stay at the current time or later.
+    if (rescheduleForm.booking_date === minimumRescheduleDate.value && rescheduleForm.start_time && rescheduleForm.start_time < minimumRescheduleTime.value) {
+        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+        return false;
+    }
+
+    return true;
+}
+
 function calculateDurationMinutes(startTime, endTime) {
     if (!startTime || !endTime) {
         return 60;
@@ -383,6 +417,22 @@ function calculateDurationMinutes(startTime, endTime) {
     const [endHour, endMinute] = endTime.split(':').map(Number);
 
     return ((endHour * 60) + endMinute) - ((startHour * 60) + startMinute);
+}
+
+function localTimeString() {
+    const now = new Date();
+
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function roundTimeUpToFiveMinutes(time) {
+    const [hours, minutes] = time.split(':').map(Number);
+    const roundedMinutes = Math.ceil(minutes / 5) * 5;
+    const roundedDate = new Date();
+
+    roundedDate.setHours(hours, roundedMinutes, 0, 0);
+
+    return `${String(roundedDate.getHours()).padStart(2, '0')}:${String(roundedDate.getMinutes()).padStart(2, '0')}`;
 }
 
 onMounted(load);
@@ -398,6 +448,38 @@ watch(
     ],
     () => {
         void loadQuickRescheduleSlots();
+    },
+);
+
+watch(
+    () => rescheduleForm.booking_date,
+    (bookingDate) => {
+        frontendErrors.booking_date = [];
+
+        if (bookingDate === minimumRescheduleDate.value && rescheduleForm.start_time && rescheduleForm.start_time < minimumRescheduleTime.value) {
+            rescheduleForm.start_time = '';
+            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+        }
+    },
+);
+
+watch(
+    () => rescheduleForm.start_time,
+    (startTime) => {
+        if (! startTime) {
+            frontendErrors.start_time = [];
+
+            return;
+        }
+
+        if (rescheduleForm.booking_date === minimumRescheduleDate.value && startTime < minimumRescheduleTime.value) {
+            rescheduleForm.start_time = '';
+            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+
+            return;
+        }
+
+        frontendErrors.start_time = [];
     },
 );
 </script>
@@ -662,12 +744,12 @@ watch(
                 </div>
 
                 <div class="space-y-5">
-                    <form v-if="needsReschedule" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="reschedule">
+                    <form v-if="needsReschedule" novalidate class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="reschedule">
                         <h3 class="font-semibold text-gray-900 dark:text-white">Reschedule booking</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a new date and time for this same worker request.</p>
                         <div class="mt-4 grid gap-4">
-                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" :error="errors.booking_date" />
-                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" :error="errors.start_time" />
+                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" :min="minimumRescheduleDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
+                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" :min="minimumRescheduleTime" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
                             <FormInput id="reschedule_end_time" v-model="rescheduleForm.end_time" type="time" label="End time" :error="errors.end_time" />
                         </div>
                         <div class="mt-4">

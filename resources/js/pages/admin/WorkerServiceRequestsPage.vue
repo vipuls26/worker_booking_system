@@ -98,7 +98,7 @@ onMounted(load);
 
 <template>
     <AdminLayout title="Worker Service Requests">
-        <div class="space-y-4">
+        <div class="space-y-4" data-testid="admin-worker-service-requests-page">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                     <SearchFilter v-model="search" placeholder="Search worker, service, or description" @search="load()" />
@@ -117,7 +117,7 @@ onMounted(load);
                 :has-records="workerServices.length > 0"
                 empty-message="No worker service requests found."
             >
-                <tr v-for="workerService in workerServices" :key="workerService.id">
+                <tr v-for="workerService in workerServices" :key="workerService.id" :data-testid="`admin-worker-service-row-${workerService.id}`">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ workerService.worker?.name || 'Worker' }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ workerService.worker?.email }}</p>
@@ -149,6 +149,7 @@ onMounted(load);
                                 type="button"
                                 class="inline-flex size-9 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                                 title="Approve"
+                                :data-testid="`admin-worker-service-approve-${workerService.id}`"
                                 :disabled="processingId === workerService.id || workerService.approval_status === 'approved'"
                                 @click="approve(workerService)"
                             >
@@ -158,6 +159,7 @@ onMounted(load);
                                 type="button"
                                 class="inline-flex size-9 items-center justify-center rounded-md border border-red-200 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
                                 title="Reject"
+                                :data-testid="`admin-worker-service-reject-${workerService.id}`"
                                 :disabled="processingId === workerService.id || workerService.approval_status === 'rejected'"
                                 @click="rejecting = workerService"
                             >
@@ -171,14 +173,14 @@ onMounted(load);
             <PaginationControls :meta="meta" @change="load" />
         </div>
 
-        <div v-if="rejecting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div v-if="rejecting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" data-testid="admin-worker-service-reject-modal">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 shadow-xl ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="reject">
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Reject service request</h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ rejecting.worker?.name }} · {{ rejecting.service?.name }}</p>
                 </div>
-                <FormTextarea id="worker_service_rejection_reason" v-model="rejectionReason" label="Reason" required />
-                <AppButton type="submit" icon="pi-times" :loading="processingId === rejecting.id">Reject request</AppButton>
+                <FormTextarea id="worker_service_rejection_reason" v-model="rejectionReason" label="Reason" required data-testid="worker-service-rejection-reason" />
+                <AppButton type="submit" icon="pi-times" :loading="processingId === rejecting.id" data-testid="worker-service-reject-submit">Reject request</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="rejecting = null; rejectionReason = ''">Cancel</button>
             </form>
         </div>

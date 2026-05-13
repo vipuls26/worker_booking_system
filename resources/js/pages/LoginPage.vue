@@ -37,15 +37,15 @@ async function submit() {
 
 <template>
     <AuthLayout>
-        <form class="space-y-5" @submit.prevent="submit">
+        <form class="space-y-5" data-testid="login-form" @submit.prevent="submit">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Sign in</h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Use your platform account to continue.</p>
             </div>
 
-            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="errors.email" />
+            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="errors.email" data-testid="login-email" />
             <div class="space-y-2">
-                <FormInput id="password" v-model="form.password" label="Password" type="password" autocomplete="current-password" :error="errors.password" />
+                <FormInput id="password" v-model="form.password" label="Password" type="password" autocomplete="current-password" :error="errors.password" data-testid="login-password" />
                 <div class="flex justify-end">
                     <RouterLink to="/forgot-password" class="text-sm font-medium text-gray-700 underline transition hover:text-gray-950 dark:text-gray-300 dark:hover:text-white">
                         Forgot password?
@@ -53,7 +53,7 @@ async function submit() {
                 </div>
             </div>
 
-            <AppButton type="submit" icon="pi-sign-in" :loading="loading">{{ loading ? 'Signing in...' : 'Login' }}</AppButton>
+            <AppButton type="submit" icon="pi-sign-in" :loading="loading" data-testid="login-submit">{{ loading ? 'Signing in...' : 'Login' }}</AppButton>
 
             <p class="text-center text-sm text-gray-600 dark:text-gray-400">
                 New here?

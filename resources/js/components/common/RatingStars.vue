@@ -4,6 +4,10 @@ const props = defineProps({
         type: Number,
         default: 0,
     },
+    testidPrefix: {
+        type: String,
+        default: '',
+    },
     readonly: {
         type: Boolean,
         default: false,
@@ -25,6 +29,7 @@ function setRating(rating) {
             v-for="rating in 5"
             :key="rating"
             type="button"
+            :data-testid="testidPrefix ? `${testidPrefix}-${rating}` : null"
             class="inline-flex size-8 items-center justify-center rounded-md text-lg transition"
             :class="[
                 rating <= modelValue ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600',

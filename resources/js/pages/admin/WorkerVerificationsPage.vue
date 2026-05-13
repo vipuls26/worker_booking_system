@@ -88,10 +88,10 @@ onMounted(load);
 
 <template>
     <AdminLayout title="Worker Verification">
-        <div class="space-y-4">
+        <div class="space-y-4" data-testid="admin-worker-verifications-page">
             <div class="max-w-xs"><FormSelect id="verification_status" v-model="status" label="Status" :options="statusOptions" /></div>
             <AdminTable :columns="[{ key: 'worker', label: 'Worker' }, { key: 'experience', label: 'Experience' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="verifications.length > 0">
-                <tr v-for="item in verifications" :key="item.id">
+                <tr v-for="item in verifications" :key="item.id" :data-testid="`admin-worker-verification-row-${item.id}`">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ item.worker?.name }}</p>
                         <a :href="item.id_proof_url" target="_blank" class="text-sm text-blue-600 dark:text-blue-300">View ID proof</a>
@@ -105,9 +105,9 @@ onMounted(load);
                     <td class="px-4 py-3"><StatusBadge :value="item.status" /></td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex flex-wrap justify-end gap-2">
-                        <button :class="successChip" @click="approve(item)">Approve</button>
-                        <button :class="warningChip" @click="resubmitting = item">Resubmit</button>
-                        <button :class="dangerChip" @click="rejecting = item">Reject</button>
+                        <button :data-testid="`admin-worker-verification-approve-${item.id}`" :class="successChip" @click="approve(item)">Approve</button>
+                        <button :data-testid="`admin-worker-verification-resubmit-${item.id}`" :class="warningChip" @click="resubmitting = item">Resubmit</button>
+                        <button :data-testid="`admin-worker-verification-reject-${item.id}`" :class="dangerChip" @click="rejecting = item">Reject</button>
                         </div>
                     </td>
                 </tr>
@@ -115,26 +115,26 @@ onMounted(load);
             <PaginationControls :meta="meta" @change="load" />
         </div>
 
-        <div v-if="rejecting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div v-if="rejecting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" data-testid="admin-worker-verification-reject-modal">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="reject">
                 <h2 class="font-semibold text-gray-900 dark:text-white">Reject worker</h2>
                 <p v-if="rejectionWarning" class="rounded-md bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
                     {{ rejectionWarning }}
                 </p>
-                <FormTextarea id="worker_rejection_reason" v-model="rejectionReason" label="Reason" required />
-                <AppButton type="submit" icon="pi-times">Reject</AppButton>
+                <FormTextarea id="worker_rejection_reason" v-model="rejectionReason" label="Reason" required data-testid="worker-verification-rejection-reason" />
+                <AppButton type="submit" icon="pi-times" data-testid="worker-verification-reject-submit">Reject</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="rejecting = null">Cancel</button>
             </form>
         </div>
 
-        <div v-if="resubmitting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div v-if="resubmitting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" data-testid="admin-worker-verification-resubmit-modal">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="requestResubmission">
                 <h2 class="font-semibold text-gray-900 dark:text-white">Request resubmission</h2>
                 <p v-if="resubmissionWarning" class="rounded-md bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
                     {{ resubmissionWarning }}
                 </p>
-                <FormTextarea id="worker_resubmission_reason" v-model="resubmissionReason" label="What should the worker fix?" required />
-                <AppButton type="submit" icon="pi-refresh">Request resubmission</AppButton>
+                <FormTextarea id="worker_resubmission_reason" v-model="resubmissionReason" label="What should the worker fix?" required data-testid="worker-verification-resubmission-reason" />
+                <AppButton type="submit" icon="pi-refresh" data-testid="worker-verification-resubmit-submit">Request resubmission</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="resubmitting = null">Cancel</button>
             </form>
         </div>

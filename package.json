@@ -4,11 +4,20 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:e2e": "playwright test",
+        "test:e2e:auto": "playwright test",
+        "test:e2e:concurrency:multiwindow": "PLAYWRIGHT_SKIP_DATABASE_RESET=1 playwright test tests/e2e/concurrency-persistent.spec.ts",
+        "test:e2e:concurrency:multiwindow:fresh": "playwright test tests/e2e/concurrency-persistent.spec.ts",
+        "test:e2e:concurrency:persistent": "PLAYWRIGHT_SKIP_DATABASE_RESET=1 playwright test tests/e2e/concurrency-persistent.spec.ts",
+        "test:e2e:concurrency:persistent:fresh": "playwright test tests/e2e/concurrency-persistent.spec.ts",
+        "test:e2e:ui": "playwright test --ui",
+        "test:e2e:debug": "playwright test --debug"
     },
     "devDependencies": {
         "@inertiajs/vue3": "^2.0.0",
         "@laravel/echo-vue": "^2.3.4",
+        "@playwright/test": "^1.60.0",
         "@tailwindcss/forms": "^0.5.3",
         "@tailwindcss/vite": "^4.2.4",
         "@vitejs/plugin-vue": "^6.0.0",

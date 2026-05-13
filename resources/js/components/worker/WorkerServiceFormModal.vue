@@ -83,7 +83,7 @@ function submit() {
 </script>
 
 <template>
-    <div v-if="open" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 py-3 sm:items-center sm:px-4 sm:py-6">
+    <div v-if="open" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 py-3 sm:items-center sm:px-4 sm:py-6" data-testid="worker-service-form-modal">
         <section class="max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 sm:max-h-[calc(100vh-3rem)]">
             <div class="flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-white/10">
                 <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ title }}</h2>
@@ -102,6 +102,7 @@ function submit() {
                     option-value="id"
                     placeholder="Select a service"
                     :error="errors.service_id"
+                    data-testid="worker-service-form-service"
                 />
 
                 <FormSelect
@@ -112,10 +113,11 @@ function submit() {
                     option-label="label"
                     option-value="value"
                     :error="errors.pricing_type"
+                    data-testid="worker-service-form-pricing-type"
                 />
 
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <FormInput id="worker_service_price" v-model="form.price" label="Price" type="number" min="1" step="0.01" :error="errors.price" />
+                    <FormInput id="worker_service_price" v-model="form.price" label="Price" type="number" min="1" step="0.01" :error="errors.price" data-testid="worker-service-form-price" />
                     <FormInput
                         v-if="form.pricing_type === 'hourly'"
                         id="worker_service_minimum_hours"
@@ -126,6 +128,7 @@ function submit() {
                         max="24"
                         step="1"
                         :error="errors.minimum_hours"
+                        data-testid="worker-service-form-minimum-hours"
                     />
                 </div>
 
@@ -140,14 +143,14 @@ function submit() {
                     Service requests stay hidden from customers until an admin approves them. Reapplying updates the rejected request and sends it back for approval.
                 </div>
 
-                <FormTextarea id="worker_service_description" v-model="form.description" label="Description" :error="errors.description" />
+                <FormTextarea id="worker_service_description" v-model="form.description" label="Description" :error="errors.description" data-testid="worker-service-form-description" />
 
                 <div class="grid gap-2 pt-2 sm:flex sm:justify-end">
-                    <button type="button" class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10" @click="$emit('close')">
+                    <button type="button" data-testid="worker-service-form-cancel" class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10" @click="$emit('close')">
                         Cancel
                     </button>
                     <div class="sm:w-auto">
-                        <AppButton type="submit" icon="pi-send" :loading="loading">{{ submitLabel }}</AppButton>
+                        <AppButton type="submit" icon="pi-send" :loading="loading" data-testid="worker-service-form-submit">{{ submitLabel }}</AppButton>
                     </div>
                 </div>
             </form>

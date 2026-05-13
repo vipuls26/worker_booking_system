@@ -130,13 +130,13 @@ onMounted(async () => {
 
 <template>
     <DashboardLayout title="Worker Availability">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="worker-availability-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Availability</h2>
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Plan weekly working windows and mark off days so customers see accurate availability.</p>
                 </div>
-                <AppButton type="button" icon="pi-plus" :full-width="false" @click="openCreateModal">Add window</AppButton>
+                <AppButton type="button" icon="pi-plus" :full-width="false" data-testid="worker-schedule-open-create" @click="openCreateModal">Add window</AppButton>
             </div>
 
             <div class="grid gap-3 sm:grid-cols-3">

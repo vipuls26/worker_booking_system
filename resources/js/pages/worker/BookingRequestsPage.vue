@@ -72,7 +72,7 @@ onMounted(load);
 
 <template>
     <DashboardLayout title="Booking Requests">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="worker-booking-requests-page">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="max-w-sm">
                     <FormSelect id="worker_request_status" v-model="bookingRequestsStore.filters.status" label="Status" :options="statusOptions" option-label="label" option-value="value" />
@@ -91,13 +91,14 @@ onMounted(load);
                 <article
                     v-for="bookingRequest in bookingRequestsStore.bookingRequests"
                     :key="bookingRequest.id"
+                    :data-testid="`worker-booking-request-card-${bookingRequest.id}`"
                     class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10"
                 >
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <h2 class="font-semibold text-gray-900 dark:text-white">{{ bookingRequest.service_request?.service?.name }}</h2>
-                                <span class="rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="statusClass(bookingRequest.status)">
+                                <span :data-testid="`worker-booking-request-status-${bookingRequest.id}`" class="rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="statusClass(bookingRequest.status)">
                                     {{ bookingRequest.status.replace('_', ' ') }}
                                 </span>
                             </div>
@@ -120,12 +121,14 @@ onMounted(load);
                                 label="Cancellation reason"
                                 rows="3"
                                 placeholder="Tell the customer why you cannot take this request"
+                                :data-testid="`worker-booking-request-cancel-reason-${bookingRequest.id}`"
                             />
                             <div class="grid grid-cols-2 gap-2">
-                                <AppButton icon="pi-check" size="sm" :loading="bookingRequestsStore.saving" @click="respond(bookingRequest, 'accepted')">Accept</AppButton>
+                                <AppButton icon="pi-check" size="sm" :loading="bookingRequestsStore.saving" :data-testid="`worker-booking-request-accept-${bookingRequest.id}`" @click="respond(bookingRequest, 'accepted')">Accept</AppButton>
                                 <button
                                     type="button"
                                     class="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                    :data-testid="`worker-booking-request-cancel-${bookingRequest.id}`"
                                     :disabled="bookingRequestsStore.saving"
                                     @click="respond(bookingRequest, 'cancelled')"
                                 >

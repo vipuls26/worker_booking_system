@@ -60,7 +60,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <main class="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <main class="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100" data-testid="dashboard-layout">
         <aside class="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900 lg:block">
             <div class="flex items-center gap-3">
                 <div class="flex size-10 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20 dark:bg-blue-500">
@@ -80,11 +80,12 @@ onMounted(() => {
                 {{ verificationLabel }}
             </div>
 
-            <nav class="mt-8 space-y-1">
+            <nav class="mt-8 space-y-1" data-testid="desktop-sidebar-nav">
                 <RouterLink
                     v-for="item in navigation"
                     :key="item.path"
                     :to="item.path"
+                    :data-testid="`desktop-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`"
                     class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                     :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
                     active-class="bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-500"
@@ -126,6 +127,7 @@ onMounted(() => {
                         <ThemeToggle />
                         <button
                             type="button"
+                            data-testid="dashboard-logout-button"
                             class="app-toolbar-button h-10"
                             @click="handleLogout"
                         >
@@ -135,11 +137,12 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <nav class="flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label="Section navigation">
+                <nav class="flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label="Section navigation" data-testid="mobile-navbar">
                     <RouterLink
                         v-for="item in navigation"
                         :key="item.path"
                         :to="item.path"
+                        :data-testid="`mobile-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`"
                         class="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
                         active-class="bg-blue-600 text-white dark:bg-blue-500 dark:text-white"

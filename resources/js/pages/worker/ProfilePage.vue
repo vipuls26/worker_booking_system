@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
             <SkeletonCard :lines="9" :avatar="false" />
         </div>
 
-        <form v-else class="grid gap-6 lg:grid-cols-[320px_1fr]" @submit.prevent="submit">
+        <form v-else class="grid gap-6 lg:grid-cols-[320px_1fr]" data-testid="worker-profile-page" @submit.prevent="submit">
             <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="flex flex-col items-center text-center">
                     <div class="flex size-36 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-950 dark:text-gray-500">
@@ -189,13 +189,13 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div class="mt-5 rounded-lg border border-gray-200 p-4 text-left dark:border-white/10">
+                <div class="mt-5 rounded-lg border border-gray-200 p-4 text-left dark:border-white/10" data-testid="worker-verification-panel">
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Worker verification</h2>
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Submit ID proof for admin approval.</p>
                         </div>
-                        <span :class="['inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize', verificationStatusClasses]">
+                        <span :class="['inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize', verificationStatusClasses]" data-testid="worker-verification-status">
                             {{ verification?.status || 'pending' }}
                         </span>
                     </div>
@@ -235,6 +235,7 @@ onBeforeUnmount(() => {
                             <input
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
+                                data-testid="worker-verification-id-proof"
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationProofChange"
                             >
@@ -248,6 +249,7 @@ onBeforeUnmount(() => {
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
                                 multiple
+                                data-testid="worker-verification-certificates"
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationCertificateChange"
                             >
@@ -257,7 +259,7 @@ onBeforeUnmount(() => {
                         </label>
                         <p v-if="errors.certificates?.length" class="text-sm text-red-600 dark:text-red-400">{{ errors.certificates[0] }}</p>
 
-                        <AppButton type="button" icon="pi-send" :loading="verificationSubmitting" @click="submitVerification">
+                        <AppButton type="button" icon="pi-send" :loading="verificationSubmitting" data-testid="worker-verification-submit" @click="submitVerification">
                             {{ verificationButtonText }}
                         </AppButton>
                     </div>

@@ -103,7 +103,7 @@ onMounted(load);
 
 <template>
     <DashboardLayout title="Notifications">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="notifications-page">
             <section class="flex flex-col gap-3 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex items-start gap-4">
                     <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white dark:bg-white dark:text-gray-950">
@@ -117,8 +117,8 @@ onMounted(load);
                     </div>
                 </div>
                 <div class="grid gap-2 sm:w-auto sm:grid-cols-2">
-                    <AppButton icon="pi-check" :disabled="notificationsStore.unreadCount === 0" @click="markAll">Mark read</AppButton>
-                    <AppButton icon="pi-trash" variant="danger" :disabled="totalNotifications === 0" @click="isClearAllOpen = true">Clear all</AppButton>
+                    <AppButton data-testid="notifications-page-mark-all" icon="pi-check" :disabled="notificationsStore.unreadCount === 0" @click="markAll">Mark read</AppButton>
+                    <AppButton data-testid="notifications-page-open-clear-all" icon="pi-trash" variant="danger" :disabled="totalNotifications === 0" @click="isClearAllOpen = true">Clear all</AppButton>
                 </div>
             </section>
 
@@ -138,10 +138,11 @@ onMounted(load);
                 <div
                     v-for="notification in notificationsStore.notifications"
                     :key="notification.id"
+                    data-testid="notifications-page-item"
                     class="flex w-full items-start gap-4 border-b border-gray-100 px-5 py-4 text-left transition last:border-b-0 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
                     :class="notification.is_read ? '' : 'bg-blue-50/60 dark:bg-blue-500/10'"
                 >
-                    <button type="button" class="flex min-w-0 flex-1 items-start gap-4 text-left" @click="openNotification(notification)">
+                    <button type="button" class="flex min-w-0 flex-1 items-start gap-4 text-left" :data-testid="`notifications-page-open-${notification.id}`" @click="openNotification(notification)">
                         <span class="flex size-10 shrink-0 items-center justify-center rounded-md" :class="notification.is_read ? 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400' : 'bg-blue-600 text-white'">
                             <i :class="['pi', notificationIcon(notification)]" aria-hidden="true"></i>
                         </span>
@@ -156,6 +157,7 @@ onMounted(load);
                     </button>
                     <button
                         type="button"
+                        :data-testid="`notifications-page-delete-${notification.id}`"
                         class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                         aria-label="Clear notification"
                         @click="removeNotification(notification)"

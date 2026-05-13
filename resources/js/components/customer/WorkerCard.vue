@@ -32,7 +32,7 @@ function formatPrice(price) {
 </script>
 
 <template>
-    <article class="overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-900 dark:shadow-none dark:hover:border-white/20" :class="selected ? 'border-slate-950 ring-2 ring-slate-950/10 dark:border-white dark:ring-white/20' : ''">
+    <article data-testid="worker-card" class="overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-900 dark:shadow-none dark:hover:border-white/20" :class="selected ? 'border-slate-950 ring-2 ring-slate-950/10 dark:border-white dark:ring-white/20' : ''">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-950 dark:text-slate-500">
                 <img v-if="worker.profile?.profile_photo_url" :src="worker.profile.profile_photo_url" :alt="worker.name" class="size-full object-cover">
@@ -80,7 +80,7 @@ function formatPrice(price) {
                         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Starting price</p>
                         <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-white">From ₹{{ formatPrice(worker.min_service_price) }}</p>
                     </div>
-                    <RouterLink :to="`/customer/workers/${worker.id}`" class="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
+                    <RouterLink :to="`/customer/workers/${worker.id}`" data-testid="worker-view-link" class="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
                         View
                         <i class="pi pi-arrow-right text-xs" aria-hidden="true"></i>
                     </RouterLink>

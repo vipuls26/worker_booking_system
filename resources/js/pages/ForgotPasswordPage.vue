@@ -36,7 +36,7 @@ async function submit() {
 
 <template>
     <AuthLayout>
-        <form class="space-y-5" @submit.prevent="submit">
+        <form class="space-y-5" data-testid="forgot-password-form" @submit.prevent="submit">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Forgot password</h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -46,14 +46,15 @@ async function submit() {
 
             <div
                 v-if="sent"
+                data-testid="forgot-password-success"
                 class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
             >
                 Reset link sent. Check your inbox for the next step.
             </div>
 
-            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="errors.email" />
+            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="errors.email" data-testid="forgot-password-email" />
 
-            <AppButton type="submit" icon="pi-send" :loading="loading">{{ loading ? 'Sending...' : 'Send reset link' }}</AppButton>
+            <AppButton type="submit" icon="pi-send" :loading="loading" data-testid="forgot-password-submit">{{ loading ? 'Sending...' : 'Send reset link' }}</AppButton>
 
             <p class="text-center text-sm text-gray-600 dark:text-gray-400">
                 Remembered it?

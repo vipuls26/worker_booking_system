@@ -87,13 +87,13 @@ onMounted(load);
 
 <template>
     <AdminLayout title="Unblock Requests">
-        <div class="space-y-4">
+        <div class="space-y-4" data-testid="admin-unblock-requests-page">
             <div class="max-w-xs">
-                <FormSelect id="unblock_status" v-model="status" label="Status" :options="statusOptions" />
+                <FormSelect id="unblock_status" v-model="status" label="Status" :options="statusOptions" data-testid="admin-unblock-status-filter" />
             </div>
 
             <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'reason', label: 'Reason' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="requests.length > 0">
-                <tr v-for="item in requests" :key="item.id">
+                <tr v-for="item in requests" :key="item.id" :data-testid="`admin-unblock-request-row-${item.id}`">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ item.user?.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.user?.email }}</p>
@@ -110,8 +110,8 @@ onMounted(load);
                     <td class="px-4 py-3 text-right">
                         <template v-if="item.status === 'pending'">
                             <div class="flex flex-wrap justify-end gap-2">
-                            <button :class="successChip" @click="openReview(item, 'approve')">Approve</button>
-                            <button :class="dangerChip" @click="openReview(item, 'reject')">Reject</button>
+                            <button :class="successChip" :data-testid="`admin-unblock-request-approve-${item.id}`" @click="openReview(item, 'approve')">Approve</button>
+                            <button :class="dangerChip" :data-testid="`admin-unblock-request-reject-${item.id}`" @click="openReview(item, 'reject')">Reject</button>
                             </div>
                         </template>
                     </td>
@@ -121,12 +121,12 @@ onMounted(load);
             <PaginationControls :meta="meta" @change="load" />
         </div>
 
-        <div v-if="reviewing" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div v-if="reviewing" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" data-testid="admin-unblock-review-modal">
             <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="submitReview">
                 <h2 class="font-semibold capitalize text-gray-900 dark:text-white">{{ action }} unblock request</h2>
                 <p v-if="reviewError" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">{{ reviewError }}</p>
-                <FormTextarea id="unblock_admin_note" v-model="adminNote" label="Admin note optional" />
-                <AppButton type="submit" :loading="reviewSaving" :icon="action === 'approve' ? 'pi-check' : 'pi-times'">{{ action === 'approve' ? 'Approve' : 'Reject' }}</AppButton>
+                <FormTextarea id="unblock_admin_note" v-model="adminNote" label="Admin note optional" data-testid="admin-unblock-admin-note" />
+                <AppButton type="submit" :loading="reviewSaving" :icon="action === 'approve' ? 'pi-check' : 'pi-times'" data-testid="admin-unblock-review-submit">{{ action === 'approve' ? 'Approve' : 'Reject' }}</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="reviewing = null">Cancel</button>
             </form>
         </div>

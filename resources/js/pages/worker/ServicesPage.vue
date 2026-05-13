@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
 
 <template>
     <DashboardLayout title="Worker Services">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="worker-services-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">My services</h2>
@@ -135,6 +135,7 @@ onBeforeUnmount(() => {
                 </div>
                 <button
                     type="button"
+                    data-testid="worker-service-open-create"
                     class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
                     @click="openCreateModal"
                 >

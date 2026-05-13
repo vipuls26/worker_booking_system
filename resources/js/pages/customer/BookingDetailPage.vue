@@ -494,7 +494,7 @@ watch(
             </div>
         </div>
 
-        <div v-else-if="booking" class="space-y-5">
+        <div v-else-if="booking" class="space-y-5" data-testid="booking-detail-page">
             <RouterLink to="/customer/bookings" class="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 <i class="pi pi-arrow-left text-xs" aria-hidden="true"></i>
                 Back to bookings
@@ -546,7 +546,7 @@ watch(
                 </div>
 
                 <div v-if="canBookAgain" class="mt-5 flex justify-end">
-                    <AppButton type="button" icon="pi-refresh" :loading="bookingsStore.saving || checkingBookAgainAvailability" @click="bookAgain">
+                    <AppButton type="button" icon="pi-refresh" :loading="bookingsStore.saving || checkingBookAgainAvailability" data-testid="booking-book-again-button" @click="bookAgain">
                         Book Again
                     </AppButton>
                 </div>
@@ -586,6 +586,7 @@ watch(
                                 icon="pi-credit-card"
                                 :loading="bookingsStore.saving"
                                 :disabled="!canPayBooking"
+                                data-testid="booking-pay-button"
                                 @click="payBooking"
                             >
                                 {{ paymentButtonLabel }}
@@ -617,12 +618,12 @@ watch(
                     <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">{{ activeDisputes[0].title }} · {{ activeDisputes[0].status.replace('_', ' ') }}</p>
                 </div>
 
-                <form v-else-if="canOpenDispute" class="mt-5 grid gap-4 lg:grid-cols-2" @submit.prevent="submitDispute">
-                    <FormSelect id="dispute_category" v-model="disputeForm.category" label="Category" :options="disputeCategories" option-label="label" option-value="value" :error="errors.category" />
-                    <FormInput id="dispute_title" v-model="disputeForm.title" label="Title" :error="errors.title" />
-                    <FormTextarea id="dispute_description" v-model="disputeForm.description" class="lg:col-span-2" label="Description" rows="5" placeholder="Explain what happened and what support you need." :error="errors.description" />
+                <form v-else-if="canOpenDispute" class="mt-5 grid gap-4 lg:grid-cols-2" data-testid="booking-dispute-form" @submit.prevent="submitDispute">
+                    <FormSelect id="dispute_category" v-model="disputeForm.category" label="Category" :options="disputeCategories" option-label="label" option-value="value" :error="errors.category" data-testid="booking-dispute-category" />
+                    <FormInput id="dispute_title" v-model="disputeForm.title" label="Title" :error="errors.title" data-testid="booking-dispute-title" />
+                    <FormTextarea id="dispute_description" v-model="disputeForm.description" class="lg:col-span-2" label="Description" rows="5" placeholder="Explain what happened and what support you need." :error="errors.description" data-testid="booking-dispute-description" />
                     <div class="lg:col-span-2 sm:w-48">
-                        <AppButton type="submit" icon="pi-exclamation-circle" :loading="disputeSaving">Open dispute</AppButton>
+                        <AppButton type="submit" icon="pi-exclamation-circle" :loading="disputeSaving" data-testid="booking-dispute-submit">Open dispute</AppButton>
                     </div>
                 </form>
 
@@ -689,6 +690,7 @@ watch(
                                 <button
                                     v-if="booking.status === 'open' && request.status === 'accepted'"
                                     type="button"
+                                    :data-testid="`booking-select-worker-${request.id}`"
                                     class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200 sm:w-auto"
                                     @click="selectWorker(request)"
                                 >
@@ -744,24 +746,30 @@ watch(
                 </div>
 
                 <div class="space-y-5">
-                    <form v-if="needsReschedule" novalidate class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="reschedule">
+                    <form
+                        v-if="needsReschedule"
+                        novalidate
+                        class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10"
+                        data-testid="booking-reschedule-form"
+                        @submit.prevent="reschedule"
+                    >
                         <h3 class="font-semibold text-gray-900 dark:text-white">Reschedule booking</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a new date and time for this same worker request.</p>
                         <div class="mt-4 grid gap-4">
-                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" :min="minimumRescheduleDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
-                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" :min="minimumRescheduleTime" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
-                            <FormInput id="reschedule_end_time" v-model="rescheduleForm.end_time" type="time" label="End time" :error="errors.end_time" />
+                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" data-testid="booking-reschedule-date" :min="minimumRescheduleDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
+                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" data-testid="booking-reschedule-start-time" :min="minimumRescheduleTime" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
+                            <FormInput id="reschedule_end_time" v-model="rescheduleForm.end_time" type="time" label="End time" data-testid="booking-reschedule-end-time" :error="errors.end_time" />
                         </div>
                         <div class="mt-4">
-                            <AppButton type="submit" icon="pi-calendar" :loading="bookingsStore.saving">Reschedule booking</AppButton>
+                            <AppButton type="submit" icon="pi-calendar" data-testid="booking-reschedule-submit" :loading="bookingsStore.saving">Reschedule booking</AppButton>
                         </div>
                     </form>
 
-                    <form v-if="booking.status === 'open'" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="cancel">
+                    <form v-if="booking.status === 'open'" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" data-testid="booking-cancel-form" @submit.prevent="cancel">
                         <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
-                        <textarea v-model="cancelReason" rows="4" class="mt-4 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white" placeholder="Reason"></textarea>
+                        <textarea v-model="cancelReason" rows="4" data-testid="booking-cancel-reason" class="mt-4 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white" placeholder="Reason"></textarea>
                         <div class="mt-4">
-                            <AppButton type="submit" icon="pi-times">Cancel booking</AppButton>
+                            <AppButton type="submit" icon="pi-times" data-testid="booking-cancel-submit">Cancel booking</AppButton>
                         </div>
                     </form>
                     <div v-else class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
@@ -785,16 +793,17 @@ watch(
                         <p v-if="booking.review.review" class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ booking.review.review }}</p>
                     </div>
 
-                    <form v-else-if="booking.booking?.status === 'completed'" class="mt-4 space-y-4" @submit.prevent="submitReview">
+                    <form v-else-if="booking.booking?.status === 'completed'" class="mt-4 space-y-4" data-testid="booking-review-form" @submit.prevent="submitReview">
                         <RatingStars v-model="reviewForm.rating" />
                         <textarea
                             v-model="reviewForm.review"
                             rows="4"
+                            data-testid="booking-review-text"
                             class="block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
                             placeholder="Write your review"
                         ></textarea>
                         <div class="sm:w-48">
-                            <AppButton type="submit" icon="pi-star" :loading="bookingsStore.saving" :disabled="reviewForm.rating === 0">Submit review</AppButton>
+                            <AppButton type="submit" icon="pi-star" :loading="bookingsStore.saving" :disabled="reviewForm.rating === 0" data-testid="booking-review-submit">Submit review</AppButton>
                         </div>
                     </form>
 

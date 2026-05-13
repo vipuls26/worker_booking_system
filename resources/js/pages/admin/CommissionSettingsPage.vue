@@ -71,7 +71,7 @@ onMounted(() => loadSetting());
 
 <template>
     <AdminLayout title="Commission Settings">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="admin-commission-settings-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Global commission rate</h2>
@@ -100,6 +100,7 @@ onMounted(() => loadSetting());
                         max="100"
                         step="0.01"
                         :error="errors.commission_rate"
+                        data-testid="commission-rate-input"
                     />
 
                     <div class="grid gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-white/10 dark:bg-white/5 sm:grid-cols-3">
@@ -123,6 +124,7 @@ onMounted(() => loadSetting());
                             icon="pi-save"
                             :loading="commissionSettingsStore.saving"
                             :full-width="false"
+                            data-testid="commission-save-button"
                         >
                             {{ commissionSettingsStore.saving ? 'Saving...' : 'Save rate' }}
                         </AppButton>

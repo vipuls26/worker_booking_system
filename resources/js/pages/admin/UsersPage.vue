@@ -144,14 +144,14 @@ onMounted(load);
 
 <template>
     <AdminLayout title="Users Management">
-        <div class="space-y-4">
+        <div class="space-y-4" data-testid="admin-users-page">
             <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
                 <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" />
             </div>
 
             <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email_status', label: 'Email status' }, { key: 'account_status', label: 'Account status' }, { key: 'admin_approval', label: 'Admin approval' }]" :loading="loading" :has-records="users.length > 0">
-                <tr v-for="user in users" :key="user.id">
+                <tr v-for="user in users" :key="user.id" :data-testid="`admin-user-row-${user.id}`">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ user.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ user.email }}</p>
@@ -188,15 +188,16 @@ onMounted(load);
                             </span>
                             <button
                                 v-else-if="!user.is_admin_verified"
+                                :data-testid="`admin-user-verify-${user.id}`"
                                 :class="neutralChip"
                                 @click="verifyUser(user)"
                             >
                                 Verify
                             </button>
-                            <button v-if="user.account_status === 'active'" :class="warningChip" @click="openBlockDialog(user, 'partially_blocked')">Partial block</button>
-                            <button v-if="user.account_status === 'active' || user.account_status === 'partially_blocked'" :class="dangerChip" @click="openBlockDialog(user, 'fully_blocked')">Full block</button>
-                            <button v-if="user.account_status !== 'active'" :class="neutralChip" @click="openBlockDialog(user, 'unblock')">Unblock</button>
-                            <button :class="dangerChip" @click="deleting = user">Delete</button>
+                            <button v-if="user.account_status === 'active'" :data-testid="`admin-user-partial-block-${user.id}`" :class="warningChip" @click="openBlockDialog(user, 'partially_blocked')">Partial block</button>
+                            <button v-if="user.account_status === 'active' || user.account_status === 'partially_blocked'" :data-testid="`admin-user-full-block-${user.id}`" :class="dangerChip" @click="openBlockDialog(user, 'fully_blocked')">Full block</button>
+                            <button v-if="user.account_status !== 'active'" :data-testid="`admin-user-unblock-${user.id}`" :class="neutralChip" @click="openBlockDialog(user, 'unblock')">Unblock</button>
+                            <button :data-testid="`admin-user-delete-${user.id}`" :class="dangerChip" @click="deleting = user">Delete</button>
                         </div>
                     </td>
                 </tr>

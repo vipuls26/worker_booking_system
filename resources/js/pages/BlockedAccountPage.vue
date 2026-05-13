@@ -88,7 +88,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <main class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-white">
+    <main class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-white" data-testid="blocked-account-page">
         <div class="mx-auto flex max-w-2xl justify-end">
             <ThemeToggle />
         </div>
@@ -103,7 +103,7 @@ onMounted(async () => {
                 {{ restrictionContent.message }}
             </p>
 
-            <div v-if="latestRequest" class="mt-5 rounded-md border border-gray-200 p-4 text-sm dark:border-white/10">
+            <div v-if="latestRequest" class="mt-5 rounded-md border border-gray-200 p-4 text-sm dark:border-white/10" data-testid="blocked-account-latest-request">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="font-semibold text-gray-900 dark:text-white">Latest request</p>
                     <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-700 dark:bg-white/10 dark:text-gray-200">
@@ -114,12 +114,12 @@ onMounted(async () => {
                 <p v-if="latestRequest.admin_note" class="mt-2 text-gray-500 dark:text-gray-400">Admin note: {{ latestRequest.admin_note }}</p>
             </div>
 
-            <form v-if="!latestRequest || latestRequest.status === 'rejected'" class="mt-6 space-y-4" @submit.prevent="submit">
+            <form v-if="!latestRequest || latestRequest.status === 'rejected'" class="mt-6 space-y-4" data-testid="blocked-account-unblock-form" @submit.prevent="submit">
                 <div v-if="errors.request?.length || errors.account?.length" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
                     {{ errors.request?.[0] || errors.account?.[0] }}
                 </div>
-                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin remove this restriction?" :error="errors.reason" />
-                <AppButton type="submit" icon="pi-send" :loading="saving">
+                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin remove this restriction?" :error="errors.reason" data-testid="blocked-account-reason" />
+                <AppButton type="submit" icon="pi-send" :loading="saving" data-testid="blocked-account-submit">
                     {{ saving ? 'Submitting...' : 'Submit unblock request' }}
                 </AppButton>
             </form>
@@ -132,7 +132,7 @@ onMounted(async () => {
                 Admin approved your request. You still need to verify your email and complete worker reverification before full access returns.
             </p>
 
-            <button type="button" class="mt-6 text-sm font-medium text-gray-600 underline dark:text-gray-300" @click="logout">
+            <button type="button" data-testid="blocked-account-logout" class="mt-6 text-sm font-medium text-gray-600 underline dark:text-gray-300" @click="logout">
                 Logout
             </button>
         </section>

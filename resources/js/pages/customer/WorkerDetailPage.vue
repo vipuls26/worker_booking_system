@@ -280,7 +280,7 @@ watch(
             </div>
         </div>
 
-        <div v-else-if="worker" class="space-y-5">
+        <div v-else-if="worker" class="space-y-5" data-testid="worker-detail-page">
             <RouterLink to="/customer/workers" class="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 <i class="pi pi-arrow-left text-xs" aria-hidden="true"></i>
                 Back to workers
@@ -340,9 +340,9 @@ watch(
                     <div class="p-5">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="sm:col-span-2">
-                                <FormSelect id="slot_service" v-model="form.service_id" label="Service" :options="serviceOptions" :error="errors.service_id" />
+                                <FormSelect id="slot_service" v-model="form.service_id" label="Service" :options="serviceOptions" :error="errors.service_id" data-testid="booking-service-select" />
                             </div>
-                            <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :min="localDateString()" :error="errors.booking_date" />
+                            <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :min="localDateString()" :error="errors.booking_date" data-testid="booking-date-input" />
                             <div>
                                 <p class="block text-sm font-medium text-gray-700 dark:text-gray-200">Duration</p>
                                 <div class="mt-1 grid grid-cols-2 gap-2">
@@ -350,6 +350,7 @@ watch(
                                         v-for="option in durationOptions"
                                         :key="option.id"
                                         type="button"
+                                        data-testid="duration-option-button"
                                         class="rounded-md border px-3 py-2 text-sm font-semibold shadow-sm transition"
                                         :class="Number(form.duration_minutes) === Number(option.id)
                                             ? 'border-blue-600 bg-blue-600 text-white shadow-blue-600/20 dark:border-blue-400 dark:bg-blue-500'
@@ -408,6 +409,7 @@ watch(
                                     v-for="slot in group.slots"
                                     :key="`${slot.start_time}-${slot.end_time}`"
                                     type="button"
+                                    :data-testid="slot.available ? 'available-slot-button' : 'blocked-slot-button'"
                                     :disabled="!slot.available"
                                     :class="[
                                         'rounded-lg border px-3 py-3 text-left text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed',
@@ -548,18 +550,18 @@ watch(
                             Save a default address in your profile to book faster next time.
                         </div>
 
-                        <textarea id="booking_address" v-model="form.address" rows="3" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
+                        <textarea id="booking_address" v-model="form.address" rows="3" data-testid="booking-address-input" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
                         <p v-if="errors.address?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.address[0] }}</p>
                     </div>
                     <div>
                         <label for="booking_issue" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Issue description</label>
-                        <textarea id="booking_issue" v-model="form.issue_description" rows="4" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
+                        <textarea id="booking_issue" v-model="form.issue_description" rows="4" data-testid="booking-issue-input" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
                         <p v-if="errors.issue_description?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.issue_description[0] }}</p>
                     </div>
                 </div>
                 <div class="mt-5 flex justify-end">
                     <div class="w-full sm:w-auto">
-                        <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!selectedSlot">{{ bookingsStore.saving ? 'Sending...' : 'Request this worker' }}</AppButton>
+                        <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!selectedSlot" data-testid="booking-submit-button">{{ bookingsStore.saving ? 'Sending...' : 'Request this worker' }}</AppButton>
                     </div>
                 </div>
             </form>

@@ -55,25 +55,26 @@ async function submit() {
 
 <template>
     <AuthLayout>
-        <form class="space-y-5" @submit.prevent="submit">
+        <form class="space-y-5" data-testid="register-form" @submit.prevent="submit">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Create account</h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Choose the role that matches how you will use
                     the platform.</p>
             </div>
 
-            <FormInput id="name" v-model="form.name" label="Name" autocomplete="name" :error="errors.name" />
+            <FormInput id="name" v-model="form.name" label="Name" autocomplete="name" :error="errors.name" data-testid="register-name" />
             <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email"
+                data-testid="register-email"
                 :error="errors.email" />
-            <FormInput id="phone" v-model="form.phone" label="Phone" autocomplete="tel" :error="errors.phone" />
+            <FormInput id="phone" v-model="form.phone" label="Phone" autocomplete="tel" :error="errors.phone" data-testid="register-phone" />
             <FormInput id="password" v-model="form.password" label="Password" type="password"
-                autocomplete="new-password" :error="errors.password" />
+                autocomplete="new-password" :error="errors.password" data-testid="register-password" />
             <FormInput id="password_confirmation" v-model="form.password_confirmation" label="Confirm password"
-                type="password" autocomplete="new-password" :error="errors.password_confirmation" />
+                type="password" autocomplete="new-password" :error="errors.password_confirmation" data-testid="register-password-confirmation" />
 
-            <FormSelect id="role_id" v-model="form.role_id" label="Role" placeholder="Choose your role" :options="roles"
+            <FormSelect id="role_id" v-model="form.role_id" label="Role" placeholder="Choose your role" :options="roles" data-testid="register-role"
                 :error="errors.role_id" />
-            <AppButton type="submit" icon="pi-user-plus" :loading="loading">{{ loading ? 'Creating account...' : 'Register' }}</AppButton>
+            <AppButton type="submit" icon="pi-user-plus" :loading="loading" data-testid="register-submit">{{ loading ? 'Creating account...' : 'Register' }}</AppButton>
 
             <p class="text-center text-sm text-gray-600 dark:text-gray-400">
                 Already registered?

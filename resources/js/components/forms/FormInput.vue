@@ -1,7 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, useAttrs } from 'vue';
 import FormError from './FormError.vue';
 import FormLabel from './FormLabel.vue';
+
+defineOptions({
+    inheritAttrs: false,
+});
 
 const props = defineProps({
     id: {
@@ -51,6 +55,7 @@ defineEmits(['update:modelValue']);
 const isPasswordVisible = ref(false);
 const isPassword = computed(() => props.type === 'password');
 const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 'text' : props.type));
+const inputAttributes = useAttrs();
 </script>
 
 <template>
@@ -66,6 +71,7 @@ const inputType = computed(() => (isPassword.value && isPasswordVisible.value ? 
                 :max="max"
                 :step="step"
                 :disabled="disabled"
+                v-bind="inputAttributes"
                 :class="[
                     'block min-h-10 w-full min-w-0 rounded-md border-slate-300 bg-white text-slate-900 shadow-sm [color-scheme:light] placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark] dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400 dark:disabled:bg-slate-900 dark:disabled:text-slate-500',
                     isPassword ? 'pr-10' : '',

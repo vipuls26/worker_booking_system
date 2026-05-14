@@ -46,6 +46,13 @@ function formatPrice(price) {
                             <span class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                                 Available
                             </span>
+                            <span
+                                v-if="worker.profile?.is_verified"
+                                class="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+                            >
+                                <i class="pi pi-verified text-[10px]" aria-hidden="true"></i>
+                                Verified
+                            </span>
                         </div>
                         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ worker.profile?.city || 'Location not set' }}</p>
                     </div>

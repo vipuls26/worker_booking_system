@@ -73,7 +73,7 @@ Route::prefix('email')->group(function (): void {
 
     // Resend the email verification notification for an authenticated user.
     Route::post('verification-notification', [AuthController::class, 'sendVerificationEmail'])
-        ->middleware(['auth:sanctum', 'not.blocked', 'throttle:6,1'])
+        ->middleware(['auth:sanctum', 'throttle:6,1'])
         ->name('verification.send');
 });
 
@@ -108,6 +108,7 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'verified', 'platform.verified
         ]);
 });
 
+// admin route
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin')->group(function (): void {
     // Show admin dashboard metrics.
     Route::get('dashboard', AdminDashboardController::class);
@@ -185,6 +186,8 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:admin'])->prefix('admin'
     Route::patch('worker-verifications/{workerVerification}/request-resubmission', [AdminWorkerVerificationController::class, 'requestResubmission']);
 
 });
+
+// worker route
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:worker'])->prefix('worker')->group(function (): void {
     // Show the worker's public profile details.
     Route::get('profile', [WorkerProfileController::class, 'show']);
@@ -266,6 +269,8 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:worker'])->prefix('worke
         Route::get('reviews', [ReviewController::class, 'myWorkerReviews']);
     });
 });
+
+// customer route
 Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('customer')->group(function (): void {
     // Show customer dashboard metrics.
     Route::get('dashboard', [DashboardController::class, 'customer']);
@@ -287,7 +292,7 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
         Route::get('bookings', [CustomerBookingController::class, 'index']);
 
         // Create a new customer booking request.
-        Route::post('bookings', [CustomerBookingController::class, 'store'])->middleware('throttle:booking-actions');
+        Route::post('bookings', [CustomerBookingController::class, 'store'])->middleware('throttle:booking-create');
 
         // Show one customer booking request.
         Route::get('bookings/{booking}', [CustomerBookingController::class, 'show']);
@@ -299,7 +304,7 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
         Route::post('bookings/{booking}/review', [ReviewController::class, 'store']);
 
         // Select the final worker from accepted booking responses.
-        Route::patch('bookings/{booking}/select-worker', [CustomerBookingController::class, 'selectWorker'])->middleware('throttle:booking-actions');
+        Route::patch('bookings/{booking}/select-worker', [CustomerBookingController::class, 'selectWorker'])->middleware('throttle:booking-selection');
 
         // Pay for a completed customer booking.
         Route::post('bookings/{booking}/pay', [CustomerBookingController::class, 'pay'])->middleware('throttle:booking-actions');

@@ -1,17 +1,19 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminDispute, adminDisputes, updateAdminDispute } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
+import { useYupValidation } from '../../composables/useYupValidation';
 import AdminLayout from '../../layouts/AdminLayout.vue';
+import { adminDisputeReviewSchema } from '../../validation/adminSchemas';
 
 const route = useRoute();
 const router = useRouter();
@@ -28,6 +30,7 @@ const nextStatus = ref('under_review');
 const resolutionNote = ref('');
 const processingId = ref(null);
 const loadingDetails = ref(false);
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(adminDisputeReviewSchema);
 
 const statusOptions = [
     { id: '', name: 'All statuses' },
@@ -95,10 +98,23 @@ function openReview(dispute, statusValue = 'under_review') {
     reviewing.value = dispute;
     nextStatus.value = statusValue;
     resolutionNote.value = dispute.resolution_note || '';
+    clearValidationErrors();
 }
 
 async function submitReview() {
     if (!reviewing.value) {
+        return;
+    }
+
+    clearValidationErrors();
+    const isValid = await validateWithSchema({
+        status: nextStatus.value,
+        resolution_note: resolutionNote.value,
+    });
+
+    if (! isValid) {
+        toast.error('Please fix the dispute review fields.');
+
         return;
     }
 
@@ -180,13 +196,16 @@ onMounted(() => {
     filtersReady.value = true;
     load();
 });
+
+watch(nextStatus, () => clearValidationErrors(['status', 'resolution_note']));
+watch(resolutionNote, () => clearValidationErrors('resolution_note'));
 </script>
 
 <template>
     <AdminLayout title="Disputes">
         <div class="space-y-5">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="grid gap-3 lg:grid-cols-[1fr_220px_220px]">
+                <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_200px_200px]">
                     <SearchFilter v-model="search" placeholder="Search title, description, or users" @search="load()" />
                     <FormSelect id="dispute_status" v-model="status" label="Status" :options="statusOptions" />
                     <FormSelect id="dispute_category" v-model="category" label="Category" :options="categoryOptions" />
@@ -220,24 +239,24 @@ onMounted(() => {
                 empty-message="No disputes found."
             >
                 <tr v-for="dispute in disputes" :key="dispute.id">
-                    <td class="px-4 py-3">
+                    <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                         <p class="max-w-xs font-medium text-gray-900 dark:text-white">{{ dispute.title }}</p>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ dispute.category_label }}</p>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                    <td class="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 lg:px-4 lg:py-3">
                         <p class="font-medium">Booking #{{ dispute.booking_id }}</p>
                         <p class="text-gray-500 dark:text-gray-400">{{ dispute.booking?.service?.name || dispute.service_request?.service?.name || 'Service' }}</p>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                    <td class="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 lg:px-4 lg:py-3">
                         <p>Opened by {{ userLabel(dispute.opened_by) }}</p>
                         <p class="text-gray-500 dark:text-gray-400">Against {{ userLabel(dispute.against_user) }}</p>
                     </td>
-                    <td class="px-4 py-3">
+                    <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                         <StatusBadge :value="dispute.status" />
                         <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ formatDate(dispute.created_at) }}</p>
                     </td>
-                    <td class="px-4 py-3 text-right">
-                        <div class="flex flex-wrap justify-end gap-2">
+                    <td class="px-3 py-2.5 text-right lg:px-4 lg:py-3">
+                        <div class="flex flex-wrap justify-end gap-1.5 lg:gap-2">
                             <button type="button" :class="neutralChip" @click="openDetails(dispute)">View</button>
                             <button
                                 v-if="!['resolved', 'rejected'].includes(dispute.status)"
@@ -272,8 +291,8 @@ onMounted(() => {
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ reviewing.title }}</p>
                 </div>
 
-                <FormSelect id="dispute_next_status" v-model="nextStatus" label="Status" :options="reviewStatusOptions" />
-                <FormTextarea id="dispute_resolution_note" v-model="resolutionNote" :label="nextStatus === 'under_review' ? 'Internal note optional' : 'Resolution note'" :required="nextStatus !== 'under_review'" />
+                <FormSelect id="dispute_next_status" v-model="nextStatus" label="Status" :options="reviewStatusOptions" :error="validationErrors.status || []" />
+                <FormTextarea id="dispute_resolution_note" v-model="resolutionNote" :label="nextStatus === 'under_review' ? 'Internal note optional' : 'Resolution note'" :required="nextStatus !== 'under_review'" :error="validationErrors.resolution_note || []" />
 
                 <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10" @click="reviewing = null">

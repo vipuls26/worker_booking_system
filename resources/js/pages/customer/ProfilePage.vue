@@ -8,10 +8,13 @@ import FormInput from '../../components/forms/FormInput.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import { useAuthStore } from '../../stores/auth';
+import { profileSchema } from '../../validation/profileSchemas';
 
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(profileSchema);
 const saving = ref(false);
 const form = reactive({
     name: '',
@@ -30,6 +33,15 @@ function fillForm() {
 
 async function submit() {
     clearApiErrors();
+    clearValidationErrors();
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted profile fields.');
+
+        return;
+    }
+
     saving.value = true;
 
     try {
@@ -44,6 +56,10 @@ async function submit() {
 }
 
 watch(() => authStore.user, fillForm, { immediate: true });
+watch(() => form.name, () => clearValidationErrors('name'));
+watch(() => form.email, () => clearValidationErrors('email'));
+watch(() => form.phone, () => clearValidationErrors('phone'));
+watch(() => form.address, () => clearValidationErrors('address'));
 </script>
 
 <template>
@@ -79,11 +95,11 @@ watch(() => authStore.user, fillForm, { immediate: true });
                     </div>
 
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <FormInput id="customer_name" v-model="form.name" label="Name" autocomplete="name" :error="errors.name" />
-                        <FormInput id="customer_phone" v-model="form.phone" label="Phone" autocomplete="tel" :error="errors.phone" />
+                        <FormInput id="customer_name" v-model="form.name" label="Name" autocomplete="name" :error="validationErrors.name || errors.name || []" />
+                        <FormInput id="customer_phone" v-model="form.phone" label="Phone" autocomplete="tel" :error="validationErrors.phone || errors.phone || []" />
                     </div>
 
-                    <FormInput id="customer_email" v-model="form.email" type="email" label="Email" autocomplete="email" :error="errors.email" />
+                    <FormInput id="customer_email" v-model="form.email" type="email" label="Email" autocomplete="email" :error="validationErrors.email || errors.email || []" />
 
                     <FormTextarea
                         id="customer_address"
@@ -91,7 +107,7 @@ watch(() => authStore.user, fillForm, { immediate: true });
                         label="Address"
                         rows="4"
                         placeholder="House number, street, area, city"
-                        :error="errors.address"
+                        :error="validationErrors.address || errors.address || []"
                     />
 
                     <div class="flex flex-col gap-3 border-t border-gray-200 pt-5 dark:border-white/10 sm:flex-row sm:items-center sm:justify-end">

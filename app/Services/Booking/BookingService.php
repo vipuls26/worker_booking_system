@@ -40,14 +40,17 @@ class BookingService
     public function create(User $customer, array $data): ServiceRequest
     {
         return DB::transaction(function () use ($customer, $data): ServiceRequest {
+            // Lock the customer row first so rapid repeat submits cannot create two active requests.
+            $lockedCustomer = User::query()->lockForUpdate()->findOrFail($customer->id);
+
             // Partially blocked customers may log in, but they cannot open new booking work.
-            if (! $customer->canCreateBookings()) {
+            if (! $lockedCustomer->canCreateBookings()) {
                 throw ValidationException::withMessages([
                     'account' => ['Your account is temporarily restricted from creating new bookings.'],
                 ]);
             }
 
-            $address = $data['address'] ?? $customer->customerProfile?->address;
+            $address = $data['address'] ?? $lockedCustomer->customerProfile?->address;
 
             // Customers must have a usable service address before workers can quote or travel.
             if (! $address) {
@@ -58,7 +61,9 @@ class BookingService
 
             $sourceBooking = $this->bookAgain->assertSourceCanCreate($customer, $data);
             $durationMinutes = $this->durationMinutes($data);
+            $endTime = $data['end_time'] ?? CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])->addMinutes($durationMinutes)->format('H:i');
             $this->ensureDirectWorkerCanReceiveRequestedSlot($data);
+            $this->ensureCustomerHasNoMatchingActiveRequest($lockedCustomer, $data, $endTime);
 
             $workerServices = $this->workerMatching->matchingWorkerServices([
                 ...$data,
@@ -75,14 +80,14 @@ class BookingService
             $pricing = $workerServices->sortBy('price')->first();
 
             $serviceRequest = ServiceRequest::create([
-                'customer_id' => $customer->id,
+                'customer_id' => $lockedCustomer->id,
                 'selected_worker_id' => null,
                 'booking_id' => null,
                 'recreated_from_booking_id' => $sourceBooking?->id,
                 'service_id' => $data['service_id'],
                 'requested_date' => $data['booking_date'],
                 'start_time' => $data['start_time'],
-                'end_time' => $data['end_time'] ?? CarbonImmutable::parse($data['booking_date'].' '.$data['start_time'])->addMinutes($durationMinutes)->format('H:i'),
+                'end_time' => $endTime,
                 'address' => $address,
                 'description' => $data['issue_description'],
                 'estimated_amount' => $pricing ? $this->totalAmount($pricing, $durationMinutes) : 0,
@@ -109,7 +114,7 @@ class BookingService
 
             $serviceRequest = $serviceRequest->refresh()->load($this->serviceRequestRelations());
 
-            $this->audit->record('service_request.created', $customer, $serviceRequest, [
+            $this->audit->record('service_request.created', $lockedCustomer, $serviceRequest, [
                 'service_id' => $serviceRequest->service_id,
                 'target_worker_id' => $data['worker_id'] ?? null,
                 'matched_workers_count' => $serviceRequest->workers->count(),
@@ -121,7 +126,7 @@ class BookingService
             $this->notifyWorkersAboutServiceRequest($serviceRequest);
 
             return $serviceRequest;
-        });
+        }, attempts: 5);
     }
 
     public function customerBookings(User $customer, ?string $status, int $perPage = 10): LengthAwarePaginator
@@ -282,7 +287,9 @@ class BookingService
                 $lockedRequestWorker = $lockedRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']);
             }
 
-            $this->notifyCustomerAboutWorkerResponse($lockedRequestWorker);
+            $requestCancelledBecauseNoWorkersRemain = $this->cancelServiceRequestWhenNoWorkersRemain($lockedRequestWorker);
+
+            $this->notifyCustomerAboutWorkerResponse($lockedRequestWorker, $requestCancelledBecauseNoWorkersRemain);
 
             $this->audit->record('service_request_worker.responded', $worker, $lockedRequestWorker, [
                 'service_request_id' => $lockedRequestWorker->service_request_id,
@@ -292,7 +299,7 @@ class BookingService
             ]);
 
             return $lockedRequestWorker;
-        });
+        }, attempts: 5);
     }
 
     public function selectFinalWorker(ServiceRequest $serviceRequest, User $customer, int $serviceRequestWorkerId): ServiceRequest
@@ -320,7 +327,7 @@ class BookingService
             $this->finalizeWorkerSelection($lockedServiceRequest, $serviceRequestWorker, $customer);
 
             return $lockedServiceRequest->refresh()->load($this->serviceRequestRelations());
-        });
+        }, attempts: 5);
     }
 
     public function updateStatus(Booking $booking, string $status, ?string $reason = null, ?User $actor = null): Booking
@@ -470,7 +477,7 @@ class BookingService
             ]);
 
             return $lockedServiceRequest->refresh()->load($this->serviceRequestRelations());
-        });
+        }, attempts: 5);
     }
 
     /**
@@ -529,9 +536,12 @@ class BookingService
             }
 
             return $lockedRequestWorker->refresh()->load(['serviceRequest.customer.role', 'serviceRequest.service', 'serviceRequest.booking', 'worker.role']);
-        });
+        }, attempts: 5);
     }
 
+    /**
+     * Tell every matched worker about a new request and include the visit location.
+     */
     private function notifyWorkersAboutServiceRequest(ServiceRequest $serviceRequest): void
     {
         $serviceRequest->workers->each(function (ServiceRequestWorker $serviceRequestWorker) use ($serviceRequest): void {
@@ -568,14 +578,19 @@ class BookingService
     /**
      * Tell the customer when a worker responds to the open request queue.
      */
-    private function notifyCustomerAboutWorkerResponse(ServiceRequestWorker $serviceRequestWorker): void
+    /**
+     * Tell the customer how a worker response changed the request outcome.
+     */
+    private function notifyCustomerAboutWorkerResponse(ServiceRequestWorker $serviceRequestWorker, bool $requestCancelledBecauseNoWorkersRemain = false): void
     {
         $customer = $serviceRequestWorker->serviceRequest?->customer;
 
+        // Deleted or detached customers cannot receive workflow notifications.
         if (! $customer) {
             return;
         }
 
+        // Accepted responses tell the customer a worker is ready for selection.
         if ($serviceRequestWorker->status === ServiceRequestWorker::STATUS_ACCEPTED) {
             $customer->notify(new ServiceRequestWorkflowNotification(
                 serviceRequest: $serviceRequestWorker->serviceRequest,
@@ -585,6 +600,22 @@ class BookingService
             ));
         }
 
+        // Once every invited worker declines, the request should close with one clear customer message.
+        if ($requestCancelledBecauseNoWorkersRemain && in_array($serviceRequestWorker->status, [
+            ServiceRequestWorker::STATUS_REJECTED,
+            ServiceRequestWorker::STATUS_CANCELLED,
+        ], true)) {
+            $customer->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequestWorker->serviceRequest->refresh()->loadMissing('service'),
+                event: 'service_request_unavailable',
+                title: 'No workers available',
+                message: 'All available workers declined this request. Please try another date, time, or worker.',
+            ));
+
+            return;
+        }
+
+        // Individual rejections still matter while other workers may still answer.
         if ($serviceRequestWorker->status === ServiceRequestWorker::STATUS_REJECTED) {
             $customer->notify(new ServiceRequestWorkflowNotification(
                 serviceRequest: $serviceRequestWorker->serviceRequest,
@@ -593,6 +624,55 @@ class BookingService
                 message: sprintf('%s declined your booking request.', $serviceRequestWorker->worker?->name ?? 'A worker'),
             ));
         }
+
+        // Individual cancellations still matter while other workers may still answer.
+        if ($serviceRequestWorker->status === ServiceRequestWorker::STATUS_CANCELLED) {
+            $customer->notify(new ServiceRequestWorkflowNotification(
+                serviceRequest: $serviceRequestWorker->serviceRequest,
+                event: 'service_request_rejected',
+                title: 'Worker can no longer take this request',
+                message: sprintf('%s is no longer available for your booking request.', $serviceRequestWorker->worker?->name ?? 'A worker'),
+            ));
+        }
+    }
+
+    /**
+     * Close the open request once every invited worker has answered negatively.
+     */
+    private function cancelServiceRequestWhenNoWorkersRemain(ServiceRequestWorker $serviceRequestWorker): bool
+    {
+        $serviceRequest = ServiceRequest::query()
+            ->with('workers')
+            ->lockForUpdate()
+            ->find($serviceRequestWorker->service_request_id);
+
+        // Missing or already-closed requests should not be changed again here.
+        if (! $serviceRequest instanceof ServiceRequest || $serviceRequest->status !== ServiceRequest::STATUS_OPEN) {
+            return false;
+        }
+
+        // Keep the request open while any worker can still accept or reschedule it.
+        foreach ($serviceRequest->workers as $workerRequest) {
+            if (in_array($workerRequest->status, [
+                ServiceRequestWorker::STATUS_PENDING,
+                ServiceRequestWorker::STATUS_ACCEPTED,
+                ServiceRequestWorker::STATUS_SELECTED,
+                ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+            ], true)) {
+                return false;
+            }
+        }
+
+        // Empty worker lists should not be auto-cancelled from a worker response path.
+        if ($serviceRequest->workers->isEmpty()) {
+            return false;
+        }
+
+        $serviceRequest->update([
+            'status' => ServiceRequest::STATUS_CANCELLED,
+        ]);
+
+        return true;
     }
 
     private function finalizeWorkerSelection(ServiceRequest $serviceRequest, ServiceRequestWorker $serviceRequestWorker, User $actor): Booking
@@ -742,6 +822,35 @@ class BookingService
                 title: 'Reschedule needed',
                 message: 'Your selected worker is no longer available for this time slot. Please reschedule or cancel this request.',
             ));
+        }
+    }
+
+    /**
+     * Reject an exact duplicate active request so one customer cannot open the same slot twice.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function ensureCustomerHasNoMatchingActiveRequest(User $customer, array $data, string $endTime): void
+    {
+        // Search for the same customer, service, and slot before creating another active request row.
+        $existingServiceRequest = ServiceRequest::query()
+            ->where('customer_id', $customer->id)
+            ->where('service_id', $data['service_id'])
+            ->where('requested_date', $data['booking_date'])
+            ->where('start_time', $data['start_time'])
+            ->where('end_time', $endTime)
+            ->whereIn('status', [
+                ServiceRequest::STATUS_OPEN,
+                ServiceRequest::STATUS_WORKER_SELECTED,
+            ])
+            ->lockForUpdate()
+            ->first();
+
+        // Customers should continue the existing request instead of submitting the same slot twice.
+        if ($existingServiceRequest instanceof ServiceRequest) {
+            throw ValidationException::withMessages([
+                'booking_date' => ['You already have an active booking request for this slot.'],
+            ]);
         }
     }
 

@@ -36,10 +36,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     actions: {
-        setSession({ token, user }) {
+        setSession({ token, user, remember = false }) {
             this.token = token;
             this.user = user;
-            setStoredAuthSession(token, user);
+            setStoredAuthSession(token, user, remember);
         },
 
         clearSession() {
@@ -91,14 +91,14 @@ export const useAuthStore = defineStore('auth', {
 
         async register(payload) {
             const response = await authApi.register(payload);
-            this.setSession(response.data.data);
+            this.setSession({ ...response.data.data, remember: false });
 
             return response.data;
         },
 
         async login(payload) {
             const response = await authApi.login(payload);
-            this.setSession(response.data.data);
+            this.setSession({ ...response.data.data, remember: Boolean(payload.remember) });
 
             return response.data;
         },

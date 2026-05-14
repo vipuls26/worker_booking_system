@@ -170,7 +170,7 @@ onMounted(() => {
             </div>
 
             <AppPanel>
-                <div class="grid gap-3 lg:grid-cols-[1fr_220px]">
+                <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_200px]">
                     <SearchFilter v-model="servicesStore.filters.search" placeholder="Search by name, slug, or description" @search="load()" />
                     <select
                         v-model="servicesStore.filters.status"

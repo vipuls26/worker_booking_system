@@ -7,9 +7,11 @@ import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import PaginationControls from '../components/common/PaginationControls.vue';
 import SkeletonList from '../components/common/SkeletonList.vue';
 import DashboardLayout from '../layouts/DashboardLayout.vue';
+import { useAuthStore } from '../stores/auth';
 import { useNotificationsStore } from '../stores/notifications';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 const isClearAllOpen = ref(false);
 const totalNotifications = computed(() => notificationsStore.meta?.total || notificationsStore.notifications.length);
@@ -43,7 +45,11 @@ function notificationIcon(notification) {
 }
 
 function notificationUrl(notification) {
-    if (['unblock_request_approved', 'unblock_request_rejected'].includes(notification.event)) {
+    if (notification.event === 'unblock_request_approved') {
+        return authStore.isRestricted ? '/account/blocked' : authStore.dashboardPath;
+    }
+
+    if (notification.event === 'unblock_request_rejected') {
         return '/account/blocked';
     }
 

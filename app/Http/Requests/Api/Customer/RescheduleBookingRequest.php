@@ -91,8 +91,10 @@ class RescheduleBookingRequest extends ApiFormRequest
      */
     public function rules(): array
     {
+        $latestBookingDate = CarbonImmutable::today()->addMonthNoOverflow()->toDateString();
+
         return [
-            'booking_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'booking_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today', 'before_or_equal:'.$latestBookingDate],
             'start_time' => ['required', 'date_format:H:i'],
             'duration_minutes' => ['required', 'integer', 'min:60', 'max:480'],
             'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],

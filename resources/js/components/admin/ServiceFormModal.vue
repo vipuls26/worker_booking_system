@@ -4,6 +4,8 @@ import AppButton from '../common/AppButton.vue';
 import FormError from '../forms/FormError.vue';
 import FormInput from '../forms/FormInput.vue';
 import FormTextarea from '../forms/FormTextarea.vue';
+import { useYupValidation } from '../../composables/useYupValidation';
+import { adminServiceSchema } from '../../validation/adminSchemas';
 
 const props = defineProps({
     open: {
@@ -25,6 +27,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'submit']);
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(adminServiceSchema);
 const title = computed(() => (props.service ? 'Edit service category' : 'Create service category'));
 const iconOptions = [
     { label: 'Home repair', value: 'pi-home' },
@@ -62,6 +65,7 @@ const visibleIconOptions = computed(() => {
 watch(
     () => [props.open, props.service],
     () => {
+        clearValidationErrors();
         Object.assign(form, {
             name: props.service?.name || '',
             description: props.service?.description || '',
@@ -72,12 +76,23 @@ watch(
     { immediate: true },
 );
 
-function submit() {
+async function submit() {
+    clearValidationErrors();
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        return;
+    }
+
     emit('submit', {
         ...form,
         is_active: form.is_active ? 1 : 0,
     });
 }
+
+watch(() => form.name, () => clearValidationErrors('name'));
+watch(() => form.description, () => clearValidationErrors('description'));
+watch(() => form.icon, () => clearValidationErrors('icon'));
 </script>
 
 <template>
@@ -91,7 +106,7 @@ function submit() {
             </div>
 
             <form class="max-h-[calc(100vh-6rem)] space-y-4 overflow-y-auto p-4 sm:p-5" @submit.prevent="submit">
-                <FormInput id="service_name" v-model="form.name" label="Name" :error="errors.name" />
+                <FormInput id="service_name" v-model="form.name" label="Name" :error="validationErrors.name || errors.name || []" />
 
                 <div>
                     <div class="flex items-center justify-between gap-3">
@@ -118,7 +133,7 @@ function submit() {
                         </button>
                     </div>
 
-                    <FormError :error="errors.icon" />
+                    <FormError :error="validationErrors.icon || errors.icon || []" />
                 </div>
 
                 <label class="flex items-center justify-between gap-4 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-white/10 dark:text-gray-200">
@@ -126,7 +141,7 @@ function submit() {
                     <input v-model="form.is_active" type="checkbox" class="rounded border-gray-300 text-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:focus:ring-white">
                 </label>
 
-                <FormTextarea id="service_description" v-model="form.description" label="Description" :error="errors.description" />
+                <FormTextarea id="service_description" v-model="form.description" label="Description" :error="validationErrors.description || errors.description || []" />
 
                 <div class="grid gap-2 pt-2 sm:flex sm:justify-end">
                     <button type="button" class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10" @click="$emit('close')">

@@ -80,7 +80,7 @@ class UnblockRequestManagementService
                 'reviewed_at' => now(),
             ]);
 
-            // Partial blocks return straight to active, while full blocks move into a reverification-only restricted state.
+            // Approving an unblock request should fully restore account access without extra admin steps.
             if ($status === UnblockRequest::STATUS_APPROVED) {
                 if ($blockedUser->isPartiallyBlocked()) {
                     $blockedUser->update([
@@ -89,7 +89,7 @@ class UnblockRequestManagementService
                     ]);
                 } elseif ($blockedUser->isFullyBlocked()) {
                     $blockedUser->update([
-                        'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+                        'account_status' => User::STATUS_ACTIVE,
                         'is_blocked' => false,
                     ]);
                 }

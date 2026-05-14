@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -229,6 +230,29 @@ class AuthApiTest extends TestCase
         Notification::assertSentTo($user, ResetPassword::class);
     }
 
+    public function test_fully_blocked_user_can_still_request_email_verification_notification(): void
+    {
+        Notification::fake();
+        $this->seed(RoleSeeder::class);
+
+        $user = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create([
+                'account_status' => User::STATUS_FULLY_BLOCKED,
+                'is_blocked' => true,
+                'email_verified_at' => null,
+            ]);
+
+        Sanctum::actingAs($user, ['*']);
+
+        $this->postJson('/api/email/verification-notification')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Verification link sent to your email');
+
+        Notification::assertSentTo($user, VerifyEmail::class);
+    }
+
     public function test_user_can_reset_password_with_valid_token(): void
     {
         $this->seed(RoleSeeder::class);
@@ -253,6 +277,38 @@ class AuthApiTest extends TestCase
             ->assertJsonPath('message', 'Password reset successful');
 
         $this->assertTrue(Hash::check('new-password', $user->fresh()->password));
+    }
+
+    public function test_reset_password_shows_clear_message_when_token_email_pair_does_not_match(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $firstUser = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create([
+                'email' => 'customer1@gmail.com',
+                'password' => Hash::make('old-password'),
+            ]);
+
+        User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create([
+                'email' => 'customer2@gmail.com',
+                'password' => Hash::make('old-password'),
+            ]);
+
+        $token = Password::broker()->createToken($firstUser);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token' => $token,
+            'email' => 'customer2@gmail.com',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unable to reset password')
+            ->assertJsonPath('errors.email.0', 'This password reset link does not match that email address or has expired.');
     }
 
     public function test_role_middleware_blocks_other_roles(): void

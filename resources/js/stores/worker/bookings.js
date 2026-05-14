@@ -4,10 +4,10 @@ import * as bookingsApi from '../../api/worker/bookings';
 export const useWorkerBookingsStore = defineStore('workerBookings', {
     state: () => ({
         bookings: [],
-        booking: null,
         meta: {},
         loading: false,
         saving: false,
+        activeStatusKey: null,
         filters: {
             search: '',
             status: '',
@@ -35,32 +35,20 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
             }
         },
 
-        async fetchOne(id) {
-            this.loading = true;
-
-            try {
-                const response = await bookingsApi.getBooking(id);
-                this.booking = response.data.data.booking;
-
-                return response.data;
-            } finally {
-                this.loading = false;
-            }
-        },
-
         async updateStatus(id, payload) {
+            this.activeStatusKey = `${id}:${payload.status}`;
             this.saving = true;
 
             try {
                 const response = await bookingsApi.updateBookingStatus(id, payload);
-                this.booking = response.data.data.booking;
                 this.bookings = this.bookings.map((booking) => (
-                    booking.id === this.booking.id ? this.booking : booking
+                    booking.id === response.data.data.booking.id ? response.data.data.booking : booking
                 ));
 
                 return response.data;
             } finally {
                 this.saving = false;
+                this.activeStatusKey = null;
             }
         },
 
@@ -75,13 +63,6 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
                         ? { ...booking, worker_review: response.data.data.review }
                         : booking
                 ));
-
-                if (this.booking?.id === Number(id)) {
-                    this.booking = {
-                        ...this.booking,
-                        worker_review: response.data.data.review,
-                    };
-                }
 
                 return response.data;
             } finally {

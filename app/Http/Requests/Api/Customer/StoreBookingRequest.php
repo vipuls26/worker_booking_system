@@ -76,10 +76,12 @@ class StoreBookingRequest extends ApiFormRequest
      */
     public function rules(): array
     {
+        $latestBookingDate = CarbonImmutable::today()->addMonthNoOverflow()->toDateString();
+
         return [
             'worker_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
             'service_id' => ['required', 'integer', Rule::exists('services', 'id')->where('is_active', true)],
-            'booking_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'booking_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today', 'before_or_equal:'.$latestBookingDate],
             'start_time' => ['required', 'date_format:H:i', app(WorkerBookingScheduleRule::class)],
             'duration_minutes' => ['required', 'integer', 'min:60', 'max:480'],
             'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],

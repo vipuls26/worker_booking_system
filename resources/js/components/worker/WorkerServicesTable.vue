@@ -116,21 +116,21 @@ function editEvent(workerService) {
             <table class="min-w-full divide-y divide-gray-200 dark:divide-white/10">
                 <thead class="bg-gray-50 dark:bg-gray-950">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Service</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Pricing</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Approval</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Visibility</th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Actions</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Service</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Pricing</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Approval</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Visibility</th>
+                        <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-white/10">
                     <SkeletonTableRows v-if="loading" :columns="4" />
                     <tr v-else-if="workerServices.length === 0">
-                        <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">No services added yet.</td>
+                        <td colspan="5" class="px-3 py-10 text-center text-sm text-gray-500 dark:text-gray-400 lg:px-4">No services added yet.</td>
                     </tr>
                     <template v-else>
                         <tr v-for="workerService in workerServices" :key="workerService.id" class="transition hover:bg-gray-50 dark:hover:bg-white/5" :data-testid="`worker-service-row-${workerService.id}`">
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <div class="flex items-center gap-3">
                                     <span class="inline-flex size-9 items-center justify-center rounded-md bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200">
                                         <i :class="['pi', workerService.service?.icon || 'pi-briefcase']" aria-hidden="true"></i>
@@ -150,20 +150,20 @@ function editEvent(workerService) {
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            <td class="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 lg:px-4 lg:py-3">
                                 <p class="font-medium">₹{{ workerService.price }}</p>
                                 <p class="text-gray-500 dark:text-gray-400">
                                     {{ workerService.pricing_type === 'hourly' ? `Per hour, min ${workerService.minimum_hours}h` : 'Fixed price' }}
                                 </p>
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <StatusBadge :value="workerService.approval_status" />
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <StatusBadge :value="visibilityStatus(workerService)" />
                             </td>
-                            <td class="px-4 py-3">
-                                <div class="flex justify-end gap-2">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
+                                <div class="flex justify-end gap-1.5 lg:gap-2">
                                     <button
                                         type="button"
                                         :data-testid="`worker-service-edit-${workerService.id}`"

@@ -11,10 +11,13 @@ import FormInput from '../../components/forms/FormInput.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { createDispute } from '../../api/disputes';
 import { getWorker as getCustomerWorker } from '../../api/customer/workers';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
+import { disputeSchema, rescheduleSchema } from '../../validation/bookingSchemas';
+import { currentLocalLatestBookingDateString } from '../../validation/shared';
 
 function localDateString() {
     const today = new Date();
@@ -38,6 +41,16 @@ const route = useRoute();
 const router = useRouter();
 const bookingsStore = useCustomerBookingsStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const {
+    validationErrors: rescheduleValidationErrors,
+    clearValidationErrors: clearRescheduleValidationErrors,
+    validateWithSchema: validateRescheduleWithSchema,
+} = useYupValidation(rescheduleSchema);
+const {
+    validationErrors: disputeValidationErrors,
+    clearValidationErrors: clearDisputeValidationErrors,
+    validateWithSchema: validateDisputeWithSchema,
+} = useYupValidation(disputeSchema);
 const cancelReason = ref('');
 const disputeSaving = ref(false);
 const bookAgainPrefill = ref(null);
@@ -68,21 +81,50 @@ const paymentButtonLabel = computed(() => {
 
     return 'Pay now';
 });
+const serviceRequestReference = computed(() => `SR-${String(booking.value?.id || 0).padStart(6, '0')}`);
+const officialBookingReference = computed(() => (
+    officialBooking.value?.id ? `BK-${String(officialBooking.value.id).padStart(6, '0')}` : null
+));
 const acceptedRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'accepted') || []);
 const selectedRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'selected') || []);
 const comparisonRequests = computed(() => [...selectedRequests.value, ...acceptedRequests.value]);
-const otherRequests = computed(() => booking.value?.worker_requests?.filter((request) => !['accepted', 'selected'].includes(request.status)) || []);
 const awaitingRescheduleRequests = computed(() => booking.value?.worker_requests?.filter((request) => request.status === 'awaiting_reschedule') || []);
 const assignedRescheduleWorkerId = computed(() => awaitingRescheduleRequests.value[0]?.worker_id || null);
 const needsReschedule = computed(() => booking.value?.status === 'open' && awaitingRescheduleRequests.value.length > 0 && !officialBooking.value);
-const bookingDisplayStatus = computed(() => (needsReschedule.value ? 'awaiting_reschedule' : (booking.value?.booking?.status || booking.value?.status || 'open')));
+const hasNoWorkerOptions = computed(() => (
+    booking.value?.status === 'open'
+    && !officialBooking.value
+    && Boolean(booking.value?.worker_requests?.length)
+    && booking.value.worker_requests.every((request) => ['rejected', 'cancelled', 'expired'].includes(request.status))
+));
+const hasAcceptedWorkerChoices = computed(() => comparisonRequests.value.length > 0);
+const showWaitingForWorkerAcceptance = computed(() => (
+    booking.value?.status === 'open'
+    && !officialBooking.value
+    && !needsReschedule.value
+    && !hasNoWorkerOptions.value
+    && !hasAcceptedWorkerChoices.value
+    && Boolean(booking.value?.worker_requests?.length)
+));
+const showWorkerResponseSection = computed(() => (
+    hasAcceptedWorkerChoices.value
+    || showWaitingForWorkerAcceptance.value
+    || hasNoWorkerOptions.value
+));
+const bookingDisplayStatus = computed(() => {
+    if (needsReschedule.value) {
+        return 'awaiting_reschedule';
+    }
+
+    if (hasNoWorkerOptions.value) {
+        return 'unavailable';
+    }
+
+    return booking.value?.booking?.status || booking.value?.status || 'open';
+});
 const bookingDisplayWorkerName = computed(() => awaitingRescheduleRequests.value[0]?.worker?.name || booking.value?.worker?.name || 'Awaiting final worker');
 const quickRescheduleSlots = ref([]);
 const quickRescheduleLoading = ref(false);
-const frontendErrors = reactive({
-    booking_date: [],
-    start_time: [],
-});
 const reviewForm = reactive({
     rating: 0,
     review: '',
@@ -106,6 +148,7 @@ const disputeCategories = [
     { label: 'Other', value: 'other' },
 ];
 const minimumRescheduleDate = computed(() => localDateString());
+const maximumRescheduleDate = computed(() => currentLocalLatestBookingDateString());
 const minimumRescheduleTime = computed(() => rescheduleForm.booking_date === minimumRescheduleDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
 
 async function load() {
@@ -120,6 +163,10 @@ async function load() {
 }
 
 async function cancel() {
+    if (bookingsStore.saving) {
+        return;
+    }
+
     try {
         await bookingsStore.cancel(route.params.id, { cancelled_reason: cancelReason.value });
         toast.success('Booking cancelled');
@@ -130,6 +177,10 @@ async function cancel() {
 }
 
 async function selectWorker(bookingRequest) {
+    if (bookingsStore.saving) {
+        return;
+    }
+
     try {
         await bookingsStore.selectWorker(route.params.id, { worker_request_id: bookingRequest.id });
         toast.success('Worker selected');
@@ -139,10 +190,16 @@ async function selectWorker(bookingRequest) {
 }
 
 async function reschedule() {
-    clearApiErrors();
-    clearFrontendErrors();
+    if (bookingsStore.saving) {
+        return;
+    }
 
-    if (! validateRescheduleSchedule()) {
+    clearApiErrors();
+    clearRescheduleValidationErrors();
+
+    if (! await validateRescheduleSchedule()) {
+        toast.error('Please fix the highlighted reschedule fields.');
+
         return;
     }
 
@@ -158,11 +215,14 @@ async function reschedule() {
 }
 
 function clearFrontendErrors() {
-    frontendErrors.booking_date = [];
-    frontendErrors.start_time = [];
+    clearRescheduleValidationErrors();
 }
 
 async function payBooking() {
+    if (bookingsStore.saving) {
+        return;
+    }
+
     if (! canPayBooking.value) {
         toast.info('Payment is available after the worker completes the service.');
         return;
@@ -240,7 +300,17 @@ async function submitDispute() {
     }
 
     clearApiErrors();
+    clearDisputeValidationErrors();
     disputeSaving.value = true;
+
+    const isValid = await validateDisputeWithSchema(disputeForm);
+
+    if (! isValid) {
+        disputeSaving.value = false;
+        toast.error('Please fix the highlighted dispute fields.');
+
+        return;
+    }
 
     try {
         await createDispute({
@@ -328,10 +398,11 @@ async function loadQuickRescheduleSlots() {
             : localDateString();
 
         let cursorDate = searchStartDate;
+        const latestBookingDate = currentLocalLatestBookingDateString();
         const suggestedSlots = [];
 
         // Check a few upcoming days so customers can quickly pick the next workable slot.
-        for (let dayIndex = 0; dayIndex < 7 && suggestedSlots.length < 6; dayIndex++) {
+        for (let dayIndex = 0; dayIndex < 7 && suggestedSlots.length < 6 && cursorDate <= latestBookingDate; dayIndex++) {
             const response = await getCustomerWorker(assignedRescheduleWorkerId.value, {
                 available_date: cursorDate,
                 slot_minutes: desiredDurationMinutes,
@@ -391,21 +462,9 @@ function syncRescheduleForm() {
 }
 
 function validateRescheduleSchedule() {
-    // Customers should not be able to move a booking onto a day that already passed.
-    if (rescheduleForm.booking_date && rescheduleForm.booking_date < minimumRescheduleDate.value) {
-        frontendErrors.booking_date = ['Please choose today or a future date.'];
+    clearRescheduleValidationErrors();
 
-        return false;
-    }
-
-    // Same-day reschedules must stay at the current time or later.
-    if (rescheduleForm.booking_date === minimumRescheduleDate.value && rescheduleForm.start_time && rescheduleForm.start_time < minimumRescheduleTime.value) {
-        frontendErrors.start_time = ['Please choose the current time or a future time.'];
-
-        return false;
-    }
-
-    return true;
+    return validateRescheduleWithSchema(rescheduleForm);
 }
 
 function calculateDurationMinutes(startTime, endTime) {
@@ -454,11 +513,12 @@ watch(
 watch(
     () => rescheduleForm.booking_date,
     (bookingDate) => {
-        frontendErrors.booking_date = [];
+        clearRescheduleValidationErrors('booking_date');
 
         if (bookingDate === minimumRescheduleDate.value && rescheduleForm.start_time && rescheduleForm.start_time < minimumRescheduleTime.value) {
             rescheduleForm.start_time = '';
-            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+            clearRescheduleValidationErrors();
+            validateRescheduleWithSchema(rescheduleForm);
         }
     },
 );
@@ -467,21 +527,26 @@ watch(
     () => rescheduleForm.start_time,
     (startTime) => {
         if (! startTime) {
-            frontendErrors.start_time = [];
+            clearRescheduleValidationErrors('start_time');
 
             return;
         }
 
         if (rescheduleForm.booking_date === minimumRescheduleDate.value && startTime < minimumRescheduleTime.value) {
             rescheduleForm.start_time = '';
-            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+            clearRescheduleValidationErrors();
+            validateRescheduleWithSchema(rescheduleForm);
 
             return;
         }
 
-        frontendErrors.start_time = [];
+        clearRescheduleValidationErrors('start_time');
     },
 );
+
+watch(() => disputeForm.category, () => clearDisputeValidationErrors('category'));
+watch(() => disputeForm.title, () => clearDisputeValidationErrors('title'));
+watch(() => disputeForm.description, () => clearDisputeValidationErrors('description'));
 </script>
 
 <template>
@@ -505,6 +570,17 @@ watch(
                     <div>
                         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ booking.service?.name }}</h2>
                         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ bookingDisplayWorkerName }} · {{ booking.booking_date }} {{ booking.start_time }} - {{ booking.end_time }}</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                                Request #{{ serviceRequestReference }}
+                            </span>
+                            <span
+                                v-if="officialBookingReference"
+                                class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            >
+                                Booking #{{ officialBookingReference }}
+                            </span>
+                        </div>
                     </div>
                     <p class="text-lg font-semibold text-gray-900 dark:text-white">₹{{ booking.total_amount }}</p>
                 </div>
@@ -619,9 +695,9 @@ watch(
                 </div>
 
                 <form v-else-if="canOpenDispute" class="mt-5 grid gap-4 lg:grid-cols-2" data-testid="booking-dispute-form" @submit.prevent="submitDispute">
-                    <FormSelect id="dispute_category" v-model="disputeForm.category" label="Category" :options="disputeCategories" option-label="label" option-value="value" :error="errors.category" data-testid="booking-dispute-category" />
-                    <FormInput id="dispute_title" v-model="disputeForm.title" label="Title" :error="errors.title" data-testid="booking-dispute-title" />
-                    <FormTextarea id="dispute_description" v-model="disputeForm.description" class="lg:col-span-2" label="Description" rows="5" placeholder="Explain what happened and what support you need." :error="errors.description" data-testid="booking-dispute-description" />
+                    <FormSelect id="dispute_category" v-model="disputeForm.category" label="Category" :options="disputeCategories" option-label="label" option-value="value" :error="disputeValidationErrors.category || errors.category || []" data-testid="booking-dispute-category" />
+                    <FormInput id="dispute_title" v-model="disputeForm.title" label="Title" :error="disputeValidationErrors.title || errors.title || []" data-testid="booking-dispute-title" />
+                    <FormTextarea id="dispute_description" v-model="disputeForm.description" class="lg:col-span-2" label="Description" rows="5" placeholder="Explain what happened and what support you need." :error="disputeValidationErrors.description || errors.description || []" data-testid="booking-dispute-description" />
                     <div class="lg:col-span-2 sm:w-48">
                         <AppButton type="submit" icon="pi-exclamation-circle" :loading="disputeSaving" data-testid="booking-dispute-submit">Open dispute</AppButton>
                     </div>
@@ -632,22 +708,24 @@ watch(
                 </p>
             </section>
 
-            <section v-if="booking.worker_requests?.length" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <section v-if="showWorkerResponseSection" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ booking.worker_requests.length > 1 ? 'Compare accepted workers' : 'Worker response' }}</h3>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">
+                            {{ hasAcceptedWorkerChoices ? (booking.worker_requests.length > 1 ? 'Compare accepted workers' : 'Worker response') : 'Worker availability' }}
+                        </h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {{ booking.worker_requests.length > 1 ? 'Choose one accepted worker to create the official booking.' : 'This request was sent to one worker. Confirm them after they accept.' }}
+                            {{ hasAcceptedWorkerChoices ? (booking.worker_requests.length > 1 ? 'Choose one accepted worker to create the official booking.' : 'Your worker has accepted. Confirm them to create the official booking.') : 'We will show the worker here after someone accepts your booking request.' }}
                         </p>
                     </div>
-                    <span v-if="booking.status === 'open'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                    <span v-if="hasAcceptedWorkerChoices && booking.status === 'open'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                         {{ acceptedRequests.length }} accepted
                     </span>
                 </div>
 
-                <div v-if="comparisonRequests.length" class="mt-4 grid gap-4 lg:grid-cols-2">
+                <div v-if="hasAcceptedWorkerChoices" class="mt-4 grid gap-4 lg:grid-cols-2">
                     <article v-for="request in comparisonRequests" :key="request.id" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-gray-950">
-                        <div class="flex gap-4">
+                        <div class="flex flex-col gap-4 min-[420px]:flex-row">
                             <div class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-900 dark:text-gray-500">
                                 <img v-if="request.worker?.profile?.profile_photo_url" :src="request.worker.profile.profile_photo_url" :alt="request.worker.name" class="size-full object-cover">
                                 <i v-else class="pi pi-user text-xl" aria-hidden="true"></i>
@@ -664,7 +742,7 @@ watch(
                                     </span>
                                 </div>
 
-                                <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                                <div class="mt-4 grid grid-cols-1 gap-2 text-sm min-[420px]:grid-cols-2">
                                     <div class="rounded-md bg-gray-50 p-3 dark:bg-white/5">
                                         <p class="text-xs text-gray-500 dark:text-gray-400">Price</p>
                                         <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ priceLabel(request) }}</p>
@@ -687,38 +765,41 @@ watch(
 
                                 <p v-if="request.worker?.profile?.bio" class="mt-3 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{{ request.worker.profile.bio }}</p>
 
-                                <button
+                                <AppButton
                                     v-if="booking.status === 'open' && request.status === 'accepted'"
                                     type="button"
                                     :data-testid="`booking-select-worker-${request.id}`"
-                                    class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200 sm:w-auto"
+                                    class="mt-4 sm:w-auto"
+                                    icon="pi-check"
+                                    variant="primary"
+                                    :full-width="false"
+                                    :loading="bookingsStore.saving"
+                                    :disabled="bookingsStore.saving"
                                     @click="selectWorker(request)"
                                 >
-                                    <i class="pi pi-check" aria-hidden="true"></i>
                                     {{ booking.worker_requests.length > 1 ? 'Select worker' : 'Confirm this worker' }}
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </article>
                 </div>
 
-                <div v-else class="mt-4 rounded-lg border border-dashed border-gray-200 p-5 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
-                    No workers have accepted this request yet.
+                <div v-else-if="showWaitingForWorkerAcceptance" class="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-5 dark:border-sky-400/20 dark:bg-sky-500/10">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+                        <div class="flex size-11 items-center justify-center rounded-full bg-white text-sky-600 shadow-sm dark:bg-slate-950 dark:text-sky-300">
+                            <i class="pi pi-send text-base" aria-hidden="true"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-semibold text-sky-900 dark:text-sky-100">Request sent to available workers</p>
+                            <p class="mt-1 text-sm leading-6 text-sky-800 dark:text-sky-200">
+                                Your booking request is being reviewed right now. We will show the accepted worker here as soon as someone confirms availability.
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
-                <div v-if="otherRequests.length" class="mt-5 overflow-hidden rounded-lg border border-gray-200 dark:border-white/10">
-                    <div v-for="request in otherRequests" :key="request.id" class="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 last:border-b-0 dark:border-white/10 dark:bg-gray-950 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <p class="font-medium text-gray-900 dark:text-white">{{ request.worker?.name }}</p>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">{{ request.worker?.phone || request.worker?.email }}</p>
-                        </div>
-                        <span class="w-fit rounded-full px-2.5 py-1 text-xs font-medium capitalize" :class="{
-                            'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300': ['rejected', 'cancelled', 'auto_cancelled', 'not_selected'].includes(request.status),
-                            'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300': request.status === 'pending',
-                        }">
-                            {{ request.status.replace('_', ' ') }}
-                        </span>
-                    </div>
+                <div v-if="hasNoWorkerOptions" class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                    All invited workers declined this request. Try another time slot, choose a different worker, or create a new request.
                 </div>
             </section>
 
@@ -726,6 +807,14 @@ watch(
                 <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                     <h3 class="font-semibold text-gray-900 dark:text-white">Request details</h3>
                     <dl class="mt-4 space-y-3 text-sm">
+                        <div>
+                            <dt class="text-gray-500 dark:text-gray-400">Request reference</dt>
+                            <dd class="font-semibold text-gray-900 dark:text-white">{{ serviceRequestReference }}</dd>
+                        </div>
+                        <div v-if="officialBookingReference">
+                            <dt class="text-gray-500 dark:text-gray-400">Booking reference</dt>
+                            <dd class="font-semibold text-gray-900 dark:text-white">{{ officialBookingReference }}</dd>
+                        </div>
                         <div>
                             <dt class="text-gray-500 dark:text-gray-400">Address</dt>
                             <dd class="text-gray-900 dark:text-white">{{ booking.address }}</dd>
@@ -756,8 +845,8 @@ watch(
                         <h3 class="font-semibold text-gray-900 dark:text-white">Reschedule booking</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a new date and time for this same worker request.</p>
                         <div class="mt-4 grid gap-4">
-                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" data-testid="booking-reschedule-date" :min="minimumRescheduleDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
-                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" data-testid="booking-reschedule-start-time" :min="minimumRescheduleTime" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
+                            <FormInput id="reschedule_booking_date" v-model="rescheduleForm.booking_date" type="date" label="Booking date" data-testid="booking-reschedule-date" :min="minimumRescheduleDate" :max="maximumRescheduleDate" :error="rescheduleValidationErrors.booking_date?.length ? rescheduleValidationErrors.booking_date : (errors.booking_date || [])" />
+                            <FormInput id="reschedule_start_time" v-model="rescheduleForm.start_time" type="time" label="Start time" data-testid="booking-reschedule-start-time" :min="minimumRescheduleTime" :error="rescheduleValidationErrors.start_time?.length ? rescheduleValidationErrors.start_time : (errors.start_time || [])" />
                             <FormInput id="reschedule_end_time" v-model="rescheduleForm.end_time" type="time" label="End time" data-testid="booking-reschedule-end-time" :error="errors.end_time" />
                         </div>
                         <div class="mt-4">
@@ -775,6 +864,15 @@ watch(
                     <div v-else class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                         <h3 class="font-semibold text-gray-900 dark:text-white">Cancel booking</h3>
                         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Cancellation is available only while this request is still open.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
+                        <h3 class="font-semibold text-amber-900 dark:text-amber-100">Cancellation and refund policy</h3>
+                        <ul class="mt-3 space-y-2 text-sm text-amber-800 dark:text-amber-200">
+                            <li>Open requests can be cancelled before you confirm a final worker.</li>
+                            <li>If a worker availability change forces a reschedule, you can pick a new slot or close the request.</li>
+                            <li>Completed and paid bookings may require admin review before any refund decision is final.</li>
+                        </ul>
                     </div>
                 </div>
             </section>

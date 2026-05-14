@@ -1,38 +1,39 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import ForgotPasswordPage from '../pages/ForgotPasswordPage.vue';
-import LoginPage from '../pages/LoginPage.vue';
-import RegisterPage from '../pages/RegisterPage.vue';
-import ResetPasswordPage from '../pages/ResetPasswordPage.vue';
-import BlockedAccountPage from '../pages/BlockedAccountPage.vue';
-import EmailVerificationNoticePage from '../pages/EmailVerificationNoticePage.vue';
-import EmailVerificationSuccessPage from '../pages/EmailVerificationSuccessPage.vue';
-import NotificationsPage from '../pages/NotificationsPage.vue';
-import WorkerDashboard from '../pages/WorkerDashboard.vue';
-import CustomerDashboard from '../pages/CustomerDashboard.vue';
-import WorkerAvailabilityPage from '../pages/worker/AvailabilityPage.vue';
-import WorkerBookingRequestsPage from '../pages/worker/BookingRequestsPage.vue';
-import WorkerBookingsPage from '../pages/worker/BookingsPage.vue';
-import WorkerProfilePage from '../pages/worker/ProfilePage.vue';
-import WorkerReviewsPage from '../pages/worker/ReviewsPage.vue';
-import WorkerServicesPage from '../pages/worker/ServicesPage.vue';
-import CustomerBookingDetailPage from '../pages/customer/BookingDetailPage.vue';
-import CustomerBookingsPage from '../pages/customer/BookingsPage.vue';
-import CustomerDisputesPage from '../pages/customer/DisputesPage.vue';
-import CustomerProfilePage from '../pages/customer/ProfilePage.vue';
-import CustomerWorkerDetailPage from '../pages/customer/WorkerDetailPage.vue';
-import CustomerWorkerListingPage from '../pages/customer/WorkerListingPage.vue';
-import AdminDashboardPage from '../pages/admin/DashboardPage.vue';
-import AdminProfilePage from '../pages/admin/ProfilePage.vue';
-import AdminServicesPage from '../pages/admin/ServicesPage.vue';
-import AdminWorkerServiceRequestsPage from '../pages/admin/WorkerServiceRequestsPage.vue';
-import AdminUsersPage from '../pages/admin/UsersPage.vue';
-import AdminWorkerVerificationsPage from '../pages/admin/WorkerVerificationsPage.vue';
-import AdminUnblockRequestsPage from '../pages/admin/UnblockRequestsPage.vue';
-import AdminDisputesPage from '../pages/admin/DisputesPage.vue';
-import AdminAuditLogsPage from '../pages/admin/AuditLogsPage.vue';
-import AdminCommissionSettingsPage from '../pages/admin/CommissionSettingsPage.vue';
-import WorkerAccountPage from '../pages/worker/AccountPage.vue';
+
+const ForgotPasswordPage = () => import('../pages/ForgotPasswordPage.vue');
+const LoginPage = () => import('../pages/LoginPage.vue');
+const RegisterPage = () => import('../pages/RegisterPage.vue');
+const ResetPasswordPage = () => import('../pages/ResetPasswordPage.vue');
+const BlockedAccountPage = () => import('../pages/BlockedAccountPage.vue');
+const EmailVerificationNoticePage = () => import('../pages/EmailVerificationNoticePage.vue');
+const EmailVerificationSuccessPage = () => import('../pages/EmailVerificationSuccessPage.vue');
+const NotificationsPage = () => import('../pages/NotificationsPage.vue');
+const WorkerDashboard = () => import('../pages/WorkerDashboard.vue');
+const CustomerDashboard = () => import('../pages/CustomerDashboard.vue');
+const WorkerAvailabilityPage = () => import('../pages/worker/AvailabilityPage.vue');
+const WorkerBookingRequestsPage = () => import('../pages/worker/BookingRequestsPage.vue');
+const WorkerBookingsPage = () => import('../pages/worker/BookingsPage.vue');
+const WorkerProfilePage = () => import('../pages/worker/ProfilePage.vue');
+const WorkerReviewsPage = () => import('../pages/worker/ReviewsPage.vue');
+const WorkerServicesPage = () => import('../pages/worker/ServicesPage.vue');
+const CustomerBookingDetailPage = () => import('../pages/customer/BookingDetailPage.vue');
+const CustomerBookingsPage = () => import('../pages/customer/BookingsPage.vue');
+const CustomerDisputesPage = () => import('../pages/customer/DisputesPage.vue');
+const CustomerProfilePage = () => import('../pages/customer/ProfilePage.vue');
+const CustomerWorkerDetailPage = () => import('../pages/customer/WorkerDetailPage.vue');
+const CustomerWorkerListingPage = () => import('../pages/customer/WorkerListingPage.vue');
+const AdminDashboardPage = () => import('../pages/admin/DashboardPage.vue');
+const AdminProfilePage = () => import('../pages/admin/ProfilePage.vue');
+const AdminServicesPage = () => import('../pages/admin/ServicesPage.vue');
+const AdminWorkerServiceRequestsPage = () => import('../pages/admin/WorkerServiceRequestsPage.vue');
+const AdminUsersPage = () => import('../pages/admin/UsersPage.vue');
+const AdminWorkerVerificationsPage = () => import('../pages/admin/WorkerVerificationsPage.vue');
+const AdminUnblockRequestsPage = () => import('../pages/admin/UnblockRequestsPage.vue');
+const AdminDisputesPage = () => import('../pages/admin/DisputesPage.vue');
+const AdminAuditLogsPage = () => import('../pages/admin/AuditLogsPage.vue');
+const AdminCommissionSettingsPage = () => import('../pages/admin/CommissionSettingsPage.vue');
+const WorkerAccountPage = () => import('../pages/worker/AccountPage.vue');
 
 const routes = [
     { path: '/', redirect: '/login' },
@@ -219,6 +220,15 @@ router.beforeEach(async (to) => {
 
     if (to.meta.requiresAuth && ! authStore.isAuthenticated) {
         return '/login';
+    }
+
+    if (
+        authStore.isAuthenticated
+        && authStore.isBlocked
+        && ! authStore.isEmailVerified
+        && ! ['email.verify.notice', 'email.verify.success'].includes(to.name)
+    ) {
+        return '/email/verify';
     }
 
     if (authStore.isAuthenticated && authStore.isBlocked && ! to.meta.allowsBlocked) {

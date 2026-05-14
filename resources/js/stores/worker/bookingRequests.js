@@ -4,10 +4,10 @@ import * as bookingRequestsApi from '../../api/worker/bookingRequests';
 export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests', {
     state: () => ({
         bookingRequests: [],
-        bookingRequest: null,
         meta: {},
         loading: false,
         saving: false,
+        activeResponseKey: null,
         filters: {
             search: '',
             status: '',
@@ -35,26 +35,13 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
             }
         },
 
-        async fetchOne(id) {
-            this.loading = true;
-
-            try {
-                const response = await bookingRequestsApi.getBookingRequest(id);
-                this.bookingRequest = response.data.data.worker_request;
-
-                return response.data;
-            } finally {
-                this.loading = false;
-            }
-        },
-
         async respond(id, payload) {
+            this.activeResponseKey = `${id}:${payload.status}`;
             this.saving = true;
 
             try {
                 const response = await bookingRequestsApi.respondToBookingRequest(id, payload);
                 const updatedRequest = response.data.data.worker_request;
-                this.bookingRequest = updatedRequest;
                 this.bookingRequests = this.bookingRequests.map((bookingRequest) => (
                     bookingRequest.id === updatedRequest.id ? updatedRequest : bookingRequest
                 ));
@@ -62,6 +49,7 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
                 return response.data;
             } finally {
                 this.saving = false;
+                this.activeResponseKey = null;
             }
         },
     },

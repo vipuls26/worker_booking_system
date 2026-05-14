@@ -111,9 +111,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Unable to reset password',
-                'errors' => [
-                    'email' => [__($status)],
-                ],
+                'errors' => $this->passwordResetFailureErrors($status),
             ], 422);
         }
 
@@ -122,6 +120,32 @@ class AuthController extends Controller
             'message' => 'Password reset successful',
             'data' => [],
         ]);
+    }
+
+    /**
+     * Convert password broker failures into clearer API validation messages.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function passwordResetFailureErrors(string $status): array
+    {
+        // A mismatched email and reset link should explain both possible causes clearly.
+        if ($status === Password::INVALID_TOKEN) {
+            return [
+                'email' => ['This password reset link does not match that email address or has expired.'],
+            ];
+        }
+
+        // Unknown email addresses should still point users back to the email field.
+        if ($status === Password::INVALID_USER) {
+            return [
+                'email' => ['We could not find an account for that email address.'],
+            ];
+        }
+
+        return [
+            'email' => [__($status)],
+        ];
     }
 
     public function logout(Request $request): JsonResponse

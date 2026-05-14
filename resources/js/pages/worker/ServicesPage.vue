@@ -146,7 +146,7 @@ onBeforeUnmount(() => {
             </div>
 
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="grid gap-3 lg:grid-cols-[1fr_180px_180px]">
+                <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_170px_170px]">
                     <SearchFilter v-model="workerServicesStore.filters.search" placeholder="Search services" @search="load()" />
                     <select
                         v-model="workerServicesStore.filters.pricing_type"
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
                         <option value="inactive" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Inactive</option>
                     </select>
                 </div>
-                <div class="mt-3 max-w-xs">
+                <div class="mt-3 max-w-full xl:max-w-xs">
                     <select
                         v-model="workerServicesStore.filters.approval_status"
                         class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"

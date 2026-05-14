@@ -1,16 +1,19 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../components/common/AppButton.vue';
 import FormTextarea from '../components/forms/FormTextarea.vue';
 import ThemeToggle from '../components/common/ThemeToggle.vue';
 import { useApiErrors } from '../composables/useApiErrors';
+import { useYupValidation } from '../composables/useYupValidation';
 import { useAuthStore } from '../stores/auth';
+import { unblockRequestSchema } from '../validation/profileSchemas';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(unblockRequestSchema);
 const loading = ref(false);
 const saving = ref(false);
 const latestRequest = ref(null);
@@ -29,6 +32,47 @@ const restrictionContent = computed(() => {
         message: 'Your account is under a full restriction. Protected platform actions are paused until admin review is complete.',
     };
 });
+const canSubmitUnblockRequest = computed(() => {
+    if (! latestRequest.value) {
+        return true;
+    }
+
+    if (latestRequest.value.status === 'rejected') {
+        return true;
+    }
+
+    if (latestRequest.value.status === 'approved' && authStore.isRestricted) {
+        return true;
+    }
+
+    return false;
+});
+const unblockFormHeading = computed(() => {
+    if (canSubmitUnblockRequest.value) {
+        return 'Request account review';
+    }
+
+    return 'Unblock request status';
+});
+const unblockFormHelpText = computed(() => {
+    if (! latestRequest.value) {
+        return 'Explain why admin should remove this restriction so your account can be reviewed.';
+    }
+
+    if (latestRequest.value.status === 'rejected') {
+        return 'Your last request was rejected. Update the reason below and submit a new review request.';
+    }
+
+    if (latestRequest.value.status === 'approved' && authStore.isRestricted) {
+        return 'A previous unblock request was approved in the past, but this account is currently restricted again. Submit a new request for this new restriction.';
+    }
+
+    if (latestRequest.value.status === 'pending') {
+        return 'Your request has already been submitted. Admin will review it and update this page once a decision is made.';
+    }
+
+    return 'This request has already been reviewed. Follow the status details below for the next step.';
+});
 
 const form = reactive({
     reason: '',
@@ -41,11 +85,17 @@ async function loadRequest() {
         const response = await authStore.fetchUnblockRequest();
         latestRequest.value = response.data.unblock_request;
 
-        if (latestRequest.value?.status === 'approved' && ! latestRequest.value?.needs_reverification) {
+        if (latestRequest.value?.status === 'approved') {
             await authStore.refreshUser();
-            toast.success('Your unblock request was approved');
-            await router.replace(authStore.dashboardPath);
+
+            if (! authStore.isRestricted) {
+                toast.success('Your unblock request was approved');
+                await router.replace(authStore.dashboardPath);
+                return;
+            }
         }
+
+        form.reason = canSubmitUnblockRequest.value ? (latestRequest.value?.reason || '') : '';
     } catch {
         toast.error('Unable to load unblock request status');
     } finally {
@@ -54,8 +104,22 @@ async function loadRequest() {
 }
 
 async function submit() {
-    saving.value = true;
+    if (! canSubmitUnblockRequest.value) {
+        return;
+    }
+
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please explain why the account should be restored.');
+
+        return;
+    }
+
+    saving.value = true;
 
     try {
         const response = await authStore.submitUnblockRequest(form);
@@ -85,6 +149,8 @@ onMounted(async () => {
 
     await loadRequest();
 });
+
+watch(() => form.reason, () => clearValidationErrors('reason'));
 </script>
 
 <template>
@@ -114,24 +180,33 @@ onMounted(async () => {
                 <p v-if="latestRequest.admin_note" class="mt-2 text-gray-500 dark:text-gray-400">Admin note: {{ latestRequest.admin_note }}</p>
             </div>
 
-            <form v-if="!latestRequest || latestRequest.status === 'rejected'" class="mt-6 space-y-4" data-testid="blocked-account-unblock-form" @submit.prevent="submit">
+            <section class="mt-6 space-y-4" data-testid="blocked-account-unblock-request-section">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ unblockFormHeading }}</h2>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ unblockFormHelpText }}</p>
+                </div>
+
+                <p v-if="latestRequest?.status === 'pending'" class="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                    Your unblock request is pending admin review.
+                </p>
+
+                <form v-if="canSubmitUnblockRequest" class="space-y-4" data-testid="blocked-account-unblock-form" @submit.prevent="submit">
                 <div v-if="errors.request?.length || errors.account?.length" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
                     {{ errors.request?.[0] || errors.account?.[0] }}
                 </div>
-                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin remove this restriction?" :error="errors.reason" data-testid="blocked-account-reason" />
+                <FormTextarea id="unblock_reason" v-model="form.reason" label="Why should admin remove this restriction?" :error="validationErrors.reason || errors.reason || []" data-testid="blocked-account-reason" :disabled="saving" />
                 <AppButton type="submit" icon="pi-send" :loading="saving" data-testid="blocked-account-submit">
                     {{ saving ? 'Submitting...' : 'Submit unblock request' }}
                 </AppButton>
-            </form>
+                </form>
 
-            <p v-else-if="latestRequest?.status === 'pending'" class="mt-5 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                Your unblock request is pending admin review.
-            </p>
-
-            <p v-if="latestRequest?.status === 'approved' && latestRequest?.needs_reverification" class="mt-5 rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-500/10 dark:text-blue-200">
-                Admin approved your request. You still need to verify your email and complete worker reverification before full access returns.
-            </p>
-
+                <div v-else class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100">
+                    <p class="font-semibold">Unblock request already submitted</p>
+                    <p class="mt-1">
+                        Admin is already reviewing your latest appeal. You cannot send another request until this one is rejected or approved.
+                    </p>
+                </div>
+            </section>
             <button type="button" data-testid="blocked-account-logout" class="mt-6 text-sm font-medium text-gray-600 underline dark:text-gray-300" @click="logout">
                 Logout
             </button>

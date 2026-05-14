@@ -6,12 +6,14 @@ import AppButton from '../../components/common/AppButton.vue';
 import RatingStars from '../../components/common/RatingStars.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
-import FormSelect from '../../components/forms/FormSelect.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useAuthStore } from '../../stores/auth';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 import { useCustomerWorkersStore } from '../../stores/customer/workers';
+import { bookingRequestSchema } from '../../validation/bookingSchemas';
+import { currentLocalLatestBookingDateString } from '../../validation/shared';
 
 function localDateString() {
     const today = new Date();
@@ -26,6 +28,7 @@ const workersStore = useCustomerWorkersStore();
 const bookingsStore = useCustomerBookingsStore();
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(bookingRequestSchema);
 const worker = computed(() => workersStore.worker);
 const form = reactive({
     source_booking_id: '',
@@ -39,11 +42,8 @@ const form = reactive({
 });
 const savedAddress = computed(() => authStore.user?.address || '');
 const isUsingSavedAddress = computed(() => savedAddress.value && form.address === savedAddress.value);
-const serviceOptions = computed(() => worker.value?.services.map((workerService) => ({
-    id: workerService.service_id,
-    name: `${workerService.service?.name} - ₹${workerService.price}${workerService.pricing_type === 'hourly' ? '/hr' : ''}`,
-})) || []);
 const selectedWorkerService = computed(() => worker.value?.services.find((workerService) => String(workerService.service_id) === String(form.service_id)));
+const visibleReviews = computed(() => workersStore.reviews.slice(0, 3));
 const durationOptions = computed(() => {
     const minimumHours = selectedWorkerService.value?.pricing_type === 'hourly'
         ? Number(selectedWorkerService.value.minimum_hours || 1)
@@ -95,6 +95,19 @@ const slotGroups = computed(() => {
 
     return groups.filter((group) => group.slots.length);
 });
+const availableSlotGroups = computed(() => slotGroups.value
+    .map((group) => ({
+        ...group,
+        slots: group.slots.filter((slot) => slot.available),
+    }))
+    .filter((group) => group.slots.length));
+const blockedSlotSummary = computed(() => slotGroups.value
+    .map((group) => ({
+        key: group.key,
+        title: group.title,
+        count: group.slots.filter((slot) => !slot.available).length,
+    }))
+    .filter((group) => group.count > 0));
 const slotSummary = computed(() => {
     if (! selectedWorkerService.value) {
         return 'Select a service to load accurate slot pricing.';
@@ -106,9 +119,29 @@ const slotSummary = computed(() => {
 
     return `${formatDuration(slotMinutes.value)} slot · ${pricing}`;
 });
+const requestReferenceHint = computed(() => {
+    if (! worker.value?.id || ! form.booking_date) {
+        return 'A request reference appears right after you submit.';
+    }
+
+    return `A request reference will be generated for ${worker.value.name} after submission.`;
+});
 
 async function submitBooking() {
+    if (bookingsStore.saving) {
+        return;
+    }
+
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted booking request fields.');
+
+        return;
+    }
 
     try {
         const response = await bookingsStore.create({
@@ -130,7 +163,7 @@ function applyBookAgainPrefill() {
 
     const prefill = storedBookAgainPrefill(route.query.book_again_from) || route.query;
     const serviceId = String(prefill.service_id || '');
-    const hasService = serviceOptions.value.some((service) => String(service.id) === serviceId);
+    const hasService = worker.value?.services?.some((workerService) => String(workerService.service_id) === serviceId);
 
     if (hasService) {
         form.service_id = serviceId;
@@ -260,6 +293,8 @@ onMounted(async () => {
 watch(
     () => [form.booking_date, form.service_id, form.duration_minutes],
     () => {
+        clearValidationErrors(['booking_date', 'service_id', 'start_time']);
+
         if (durationOptions.value.length && ! durationOptions.value.some((option) => Number(option.id) === Number(form.duration_minutes))) {
             form.duration_minutes = durationOptions.value[0].id;
             return;
@@ -268,6 +303,9 @@ watch(
         refreshAvailability();
     },
 );
+
+watch(() => form.address, () => clearValidationErrors('address'));
+watch(() => form.issue_description, () => clearValidationErrors('issue_description'));
 </script>
 
 <template>
@@ -295,7 +333,16 @@ watch(
                     <div class="flex-1">
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ worker.name }}</h2>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ worker.name }}</h2>
+                                    <span
+                                        v-if="worker.profile?.is_verified"
+                                        class="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+                                    >
+                                        <i class="pi pi-verified text-[11px]" aria-hidden="true"></i>
+                                        Verified worker
+                                    </span>
+                                </div>
                                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ worker.profile?.city }} · {{ worker.profile?.experience_years }} years experience</p>
                             </div>
                             <span class="rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
@@ -308,28 +355,14 @@ watch(
                 </div>
             </section>
 
-            <section class="grid gap-5 lg:grid-cols-[1fr_380px]">
-                <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">Services</h3>
-                    <div class="mt-4 divide-y divide-gray-100 dark:divide-white/10">
-                        <article v-for="service in worker.services" :key="service.id" class="flex items-center justify-between gap-4 py-3">
-                            <div>
-                                <p class="font-medium text-gray-900 dark:text-white">{{ service.service?.name }}</p>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">{{ service.description || service.service?.slug }}</p>
-                            </div>
-                            <p class="text-sm font-semibold text-gray-900 dark:text-white">
-                                ₹{{ service.price }} <span class="font-normal text-gray-500">{{ service.pricing_type === 'hourly' ? '/hr' : 'fixed' }}</span>
-                            </p>
-                        </article>
-                    </div>
-                </div>
-
-                <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <section>
+                <form class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="submitBooking">
                     <div class="bg-blue-50 p-5 dark:bg-blue-500/10">
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-white">Book a slot</h3>
-                                <p class="mt-1 text-sm text-blue-700 dark:text-blue-200">Pick the service, date, duration, then choose an available time.</p>
+                                <p class="text-sm font-medium text-blue-600 dark:text-blue-300">Book this worker</p>
+                                <h3 class="mt-1 font-semibold text-gray-900 dark:text-white">Quick booking</h3>
+                                <p class="mt-1 text-sm text-blue-700 dark:text-blue-200">Choose a service, pick a time, and send the request.</p>
                             </div>
                             <span class="inline-flex w-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm ring-1 ring-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-400/20">
                                 {{ slotMinutes }} min
@@ -337,33 +370,74 @@ watch(
                         </div>
                     </div>
 
-                    <div class="p-5">
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <div class="sm:col-span-2">
-                                <FormSelect id="slot_service" v-model="form.service_id" label="Service" :options="serviceOptions" :error="errors.service_id" data-testid="booking-service-select" />
+                    <div class="space-y-5 p-5">
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <span class="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">1</span>
+                                <div>
+                                    <h4 class="font-semibold text-gray-900 dark:text-white">Choose a service</h4>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">Tap one option to set the job type and price.</p>
+                                </div>
                             </div>
-                            <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :min="localDateString()" :error="errors.booking_date" data-testid="booking-date-input" />
-                            <div>
-                                <p class="block text-sm font-medium text-gray-700 dark:text-gray-200">Duration</p>
-                                <div class="mt-1 grid grid-cols-2 gap-2">
-                                    <button
-                                        v-for="option in durationOptions"
-                                        :key="option.id"
-                                        type="button"
-                                        data-testid="duration-option-button"
-                                        class="rounded-md border px-3 py-2 text-sm font-semibold shadow-sm transition"
-                                        :class="Number(form.duration_minutes) === Number(option.id)
-                                            ? 'border-blue-600 bg-blue-600 text-white shadow-blue-600/20 dark:border-blue-400 dark:bg-blue-500'
-                                            : 'border-blue-100 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:border-white/10 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-blue-500/10'"
-                                        @click="selectDuration(option.id)"
-                                    >
-                                        {{ option.name }}
-                                    </button>
+                            <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                <button
+                                    v-for="service in worker.services"
+                                    :key="service.id"
+                                    type="button"
+                                    class="rounded-xl border p-4 text-left shadow-sm transition"
+                                    :class="String(form.service_id) === String(service.service_id)
+                                        ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-200 dark:border-blue-400 dark:bg-blue-500/10 dark:ring-blue-400/20'
+                                        : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/60 dark:border-white/10 dark:bg-gray-950 dark:hover:border-blue-400/30 dark:hover:bg-blue-500/10'"
+                                    @click="form.service_id = service.service_id"
+                                >
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="font-medium text-gray-900 dark:text-white">{{ service.service?.name }}</p>
+                                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ service.description || service.service?.slug }}</p>
+                                        </div>
+                                        <i v-if="String(form.service_id) === String(service.service_id)" class="pi pi-check-circle text-blue-600 dark:text-blue-300" aria-hidden="true"></i>
+                                    </div>
+                                    <p class="mt-3 text-sm font-semibold text-gray-900 dark:text-white">
+                                        ₹{{ service.price }} <span class="font-normal text-gray-500">{{ service.pricing_type === 'hourly' ? '/hr' : 'fixed' }}</span>
+                                    </p>
+                                </button>
+                            </div>
+                            <p v-if="(validationErrors.service_id || errors.service_id)?.length" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ (validationErrors.service_id || errors.service_id)[0] }}</p>
+                        </div>
+
+                        <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-gray-950/70">
+                            <div class="flex items-center gap-3">
+                                <span class="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">2</span>
+                                <div>
+                                    <h4 class="font-semibold text-gray-900 dark:text-white">Pick date and duration</h4>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">Only matching slots will stay available.</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                                <FormInput id="slot_booking_date" v-model="form.booking_date" label="Date" type="date" :min="localDateString()" :max="currentLocalLatestBookingDateString()" :error="validationErrors.booking_date || errors.booking_date || []" data-testid="booking-date-input" />
+                                <div>
+                                    <p class="block text-sm font-medium text-gray-700 dark:text-gray-200">Duration</p>
+                                    <div class="mt-1 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
+                                        <button
+                                            v-for="option in durationOptions"
+                                            :key="option.id"
+                                            type="button"
+                                            data-testid="duration-option-button"
+                                            class="rounded-md border px-3 py-2 text-sm font-semibold shadow-sm transition"
+                                            :class="Number(form.duration_minutes) === Number(option.id)
+                                                ? 'border-blue-600 bg-blue-600 text-white shadow-blue-600/20 dark:border-blue-400 dark:bg-blue-500'
+                                                : 'border-blue-100 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:border-white/10 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-blue-500/10'"
+                                            @click="selectDuration(option.id)"
+                                        >
+                                            {{ option.name }}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div v-if="selectedWorkerService" class="mt-4 rounded-lg border border-blue-100 bg-white p-3 text-sm text-gray-700 shadow-sm dark:border-blue-500/20 dark:bg-gray-950 dark:text-gray-200">
+                        <div v-if="selectedWorkerService" class="rounded-lg border border-blue-100 bg-white p-3 text-sm text-gray-700 shadow-sm dark:border-blue-500/20 dark:bg-gray-950 dark:text-gray-200">
                             <div class="flex flex-wrap items-center justify-between gap-2">
                                 <span class="inline-flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
                                     <i class="pi pi-tag text-blue-600 dark:text-blue-300" aria-hidden="true"></i>
@@ -377,21 +451,47 @@ watch(
                                 </span>
                             </div>
                         </div>
+                        <p v-else class="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                            Pick a service above to continue.
+                        </p>
 
-                        <p class="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                        <p class="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-950 dark:text-gray-300">
                             {{ slotSummary }}
+                        </p>
+                        <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm" :class="selectedSlot ? 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200'">
+                            <span class="inline-flex items-center gap-2 font-semibold">
+                                <i :class="['pi', selectedSlot ? 'pi-check-circle' : 'pi-clock']" aria-hidden="true"></i>
+                                {{ selectedWorkerService?.service?.name || 'Choose a service' }}
+                            </span>
+                            <span class="hidden text-blue-300/40 dark:text-blue-200/30 sm:inline">•</span>
+                            <span>{{ selectedSlotLabel }}</span>
+                            <span v-if="selectedSlot" class="hidden text-blue-300/40 dark:text-blue-200/30 sm:inline">•</span>
+                            <span v-if="selectedSlot" class="font-semibold">₹{{ selectedSlot.estimated_total ?? selectedWorkerService?.price }}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ requestReferenceHint }}</p>
+                        <p v-if="errors.start_time?.length" class="text-sm text-red-600 dark:text-red-300">{{ errors.start_time[0] }}</p>
+                        <p v-if="errors.end_time?.length" class="text-sm text-red-600 dark:text-red-300">{{ errors.end_time[0] }}</p>
+                        <p v-if="validationErrors.start_time?.length || bookingError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
+                            {{ validationErrors.start_time?.[0] || bookingError }}
                         </p>
                     </div>
 
                     <div class="border-t border-gray-100 p-5 dark:border-white/10">
-                        <div class="flex items-center justify-between gap-3">
-                        <div>
-                            <h3 class="font-semibold text-gray-900 dark:text-white">Available slots</h3>
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Unavailable slots stay visible, so customers know what is already taken.</p>
+                        <div class="mb-4 flex items-center gap-3">
+                            <span class="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">3</span>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 dark:text-white">Choose a time slot</h4>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Only available times can be selected.</p>
+                            </div>
                         </div>
-                        <span class="inline-flex shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                            {{ availableSlots.length }} open
-                        </span>
+                        <div class="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                            <div>
+                                <h3 class="font-semibold text-gray-900 dark:text-white">Available slots</h3>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pick one available time below.</p>
+                            </div>
+                            <span class="inline-flex w-fit shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                {{ availableSlots.length }} open
+                            </span>
                         </div>
 
                     <div v-if="workersStore.availabilityLoading" class="mt-4 grid grid-cols-2 gap-2">
@@ -399,45 +499,44 @@ watch(
                     </div>
 
                     <div v-else class="mt-4 space-y-4">
-                        <div v-for="group in slotGroups" :key="group.key" class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-white/10 dark:bg-gray-950">
+                        <div v-for="group in availableSlotGroups" :key="group.key" class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-white/10 dark:bg-gray-950">
                             <div class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                 <i :class="['pi', group.icon]" aria-hidden="true"></i>
                                 {{ group.title }}
                             </div>
-                            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <div class="grid grid-cols-2 gap-2">
                                 <button
                                     v-for="slot in group.slots"
                                     :key="`${slot.start_time}-${slot.end_time}`"
                                     type="button"
-                                    :data-testid="slot.available ? 'available-slot-button' : 'blocked-slot-button'"
-                                    :disabled="!slot.available"
+                                    data-testid="available-slot-button"
                                     :class="[
-                                        'rounded-lg border px-3 py-3 text-left text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed',
-                                        slot.available && form.start_time === slot.start_time
+                                        'rounded-lg border px-3 py-2 text-left text-sm font-semibold shadow-sm transition',
+                                        form.start_time === slot.start_time
                                             ? 'border-blue-600 bg-blue-600 text-white shadow-blue-600/20 dark:border-blue-400 dark:bg-blue-500'
                                             : '',
-                                        slot.available && form.start_time !== slot.start_time
+                                        form.start_time !== slot.start_time
                                             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20'
-                                            : '',
-                                        !slot.available
-                                            ? 'border-gray-200 bg-gray-100 text-gray-500 opacity-80 dark:border-white/10 dark:bg-white/10 dark:text-gray-400'
                                             : '',
                                     ]"
                                     @click="selectSlot(slot)"
                                 >
                                     <span class="flex items-center justify-between gap-2">
-                                        <span>{{ slot.label || `${slot.start_time} - ${slot.end_time}` }}</span>
-                                        <i v-if="slot.available && form.start_time === slot.start_time" class="pi pi-check-circle" aria-hidden="true"></i>
+                                        <span>{{ slot.start_time }}</span>
+                                        <i v-if="form.start_time === slot.start_time" class="pi pi-check-circle text-xs" aria-hidden="true"></i>
                                     </span>
-                                    <span class="mt-1 block text-xs font-medium opacity-75">
-                                        <template v-if="slot.available">
-                                            ₹{{ slot.estimated_total ?? selectedWorkerService?.price }} estimated
-                                        </template>
-                                        <template v-else>
-                                            {{ slot.reason === 'booked' ? 'Already booked' : 'Reserved by accepted request' }}
-                                        </template>
+                                    <span class="mt-1 block text-[11px] font-medium opacity-75">
+                                        {{ slot.end_time }}
                                     </span>
                                 </button>
+                            </div>
+                        </div>
+                        <div v-if="blockedSlotSummary.length" class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-white/10 dark:bg-gray-950 dark:text-gray-400">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-gray-700 dark:text-gray-200">Unavailable:</span>
+                                <span v-for="group in blockedSlotSummary" :key="group.key" class="inline-flex rounded-full bg-white px-2.5 py-1 dark:bg-white/5">
+                                    {{ group.title }} {{ group.count }}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -448,7 +547,72 @@ watch(
                         {{ availableSlots.length }} available · {{ blockedSlots.length }} booked/reserved
                     </p>
                     </div>
-                </div>
+                    <div class="border-t border-gray-100 p-5 dark:border-white/10">
+                        <div class="mb-4 flex items-center gap-3">
+                            <span class="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">4</span>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 dark:text-white">Confirm address and note</h4>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Add the location details the worker needs before arrival.</p>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <label for="booking_address" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Service address</label>
+                                    <RouterLink to="/customer/profile" class="inline-flex w-fit items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+                                        <i class="pi pi-user-edit" aria-hidden="true"></i>
+                                        Update profile address
+                                    </RouterLink>
+                                </div>
+
+                                <div v-if="savedAddress" class="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-gray-950">
+                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Saved address</p>
+                                            <p class="mt-1 text-sm text-gray-700 dark:text-gray-200">{{ savedAddress }}</p>
+                                        </div>
+                                        <div class="flex shrink-0 flex-col gap-2 min-[420px]:flex-row">
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition"
+                                                :class="isUsingSavedAddress ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950' : 'border border-gray-300 text-gray-700 hover:bg-white dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10'"
+                                                @click="useSavedAddress"
+                                            >
+                                                <i class="pi pi-check" aria-hidden="true"></i>
+                                                Use saved
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-white dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10"
+                                                @click="useDifferentAddress"
+                                            >
+                                                Different
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-else class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                                    Save a default address in your profile to book faster next time.
+                                </div>
+
+                                <textarea id="booking_address" v-model="form.address" rows="2" data-testid="booking-address-input" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
+                                <p v-if="(validationErrors.address || errors.address)?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ (validationErrors.address || errors.address)[0] }}</p>
+                            </div>
+
+                            <div>
+                                <label for="booking_issue" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Issue note</label>
+                                <textarea id="booking_issue" v-model="form.issue_description" rows="2" data-testid="booking-issue-input" placeholder="Short issue summary" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
+                                <p v-if="(validationErrors.issue_description || errors.issue_description)?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ (validationErrors.issue_description || errors.issue_description)[0] }}</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-4 dark:border-white/10">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Open requests can still be cancelled before final confirmation.</p>
+                            <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!selectedSlot" data-testid="booking-submit-button">{{ bookingsStore.saving ? 'Sending...' : 'Send request' }}</AppButton>
+                        </div>
+                    </div>
+                </form>
             </section>
 
             <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
@@ -468,7 +632,7 @@ watch(
                 </div>
 
                 <div v-else class="mt-4 divide-y divide-gray-100 dark:divide-white/10">
-                    <article v-for="review in workersStore.reviews" :key="review.id" class="py-4">
+                    <article v-for="review in visibleReviews" :key="review.id" class="py-4">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p class="font-medium text-gray-900 dark:text-white">{{ review.customer?.name || 'Customer' }}</p>
@@ -479,92 +643,11 @@ watch(
                         <p v-if="review.review" class="mt-3 text-sm text-gray-700 dark:text-gray-300">{{ review.review }}</p>
                     </article>
                 </div>
+                <p v-if="workersStore.reviews.length > visibleReviews.length" class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                    Showing the latest {{ visibleReviews.length }} reviews.
+                </p>
             </section>
 
-            <form class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="submitBooking">
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-blue-600 dark:text-blue-300">Specific worker request</p>
-                        <h3 class="mt-1 font-semibold text-gray-900 dark:text-white">Request this worker</h3>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">This request goes only to this worker for the selected slot.</p>
-                    </div>
-                    <span class="inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
-                        <i class="pi pi-user" aria-hidden="true"></i>
-                        One worker
-                    </span>
-                </div>
-                <div class="mt-4 rounded-lg border p-4 text-sm" :class="selectedSlot ? 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200'">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <span class="inline-flex items-center gap-2 font-semibold">
-                            <i :class="['pi', selectedSlot ? 'pi-check-circle' : 'pi-clock']" aria-hidden="true"></i>
-                            {{ selectedWorkerService?.service?.name || 'Service' }} · {{ selectedSlotLabel }}
-                        </span>
-                        <span v-if="selectedSlot" class="font-semibold">
-                            ₹{{ selectedSlot.estimated_total ?? selectedWorkerService?.price }} estimated
-                        </span>
-                    </div>
-                    <p v-if="errors.start_time?.length" class="mt-2 text-sm text-red-600 dark:text-red-300">{{ errors.start_time[0] }}</p>
-                    <p v-if="errors.end_time?.length" class="mt-2 text-sm text-red-600 dark:text-red-300">{{ errors.end_time[0] }}</p>
-                </div>
-                <p v-if="bookingError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
-                    {{ bookingError }}
-                </p>
-                <div class="mt-4 grid gap-4">
-                    <div>
-                        <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <label for="booking_address" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Service address</label>
-                            <RouterLink to="/customer/profile" class="inline-flex w-fit items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
-                                <i class="pi pi-user-edit" aria-hidden="true"></i>
-                                Update profile address
-                            </RouterLink>
-                        </div>
-
-                        <div v-if="savedAddress" class="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-gray-950">
-                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                <div class="min-w-0">
-                                    <p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Saved address</p>
-                                    <p class="mt-1 text-sm text-gray-700 dark:text-gray-200">{{ savedAddress }}</p>
-                                </div>
-                                <div class="flex shrink-0 gap-2">
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition"
-                                        :class="isUsingSavedAddress ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950' : 'border border-gray-300 text-gray-700 hover:bg-white dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10'"
-                                        @click="useSavedAddress"
-                                    >
-                                        <i class="pi pi-check" aria-hidden="true"></i>
-                                        Use saved
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-white dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10"
-                                        @click="useDifferentAddress"
-                                    >
-                                        Different
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-else class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                            Save a default address in your profile to book faster next time.
-                        </div>
-
-                        <textarea id="booking_address" v-model="form.address" rows="3" data-testid="booking-address-input" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
-                        <p v-if="errors.address?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.address[0] }}</p>
-                    </div>
-                    <div>
-                        <label for="booking_issue" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Issue description</label>
-                        <textarea id="booking_issue" v-model="form.issue_description" rows="4" data-testid="booking-issue-input" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"></textarea>
-                        <p v-if="errors.issue_description?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.issue_description[0] }}</p>
-                    </div>
-                </div>
-                <div class="mt-5 flex justify-end">
-                    <div class="w-full sm:w-auto">
-                        <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!selectedSlot" data-testid="booking-submit-button">{{ bookingsStore.saving ? 'Sending...' : 'Request this worker' }}</AppButton>
-                    </div>
-                </div>
-            </form>
         </div>
     </DashboardLayout>
 </template>

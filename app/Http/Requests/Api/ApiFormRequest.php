@@ -28,6 +28,7 @@ abstract class ApiFormRequest extends FormRequest
             'available_time.date_format' => 'The available time must be in HH:MM format.',
             'bio.max' => 'The bio may not be greater than :max characters.',
             'booking_date.after_or_equal' => 'The booking date must be today or a future date.',
+            'booking_date.before_or_equal' => 'The booking date must be within one month from today.',
             'booking_date.date_format' => 'The booking date must be in YYYY-MM-DD format.',
             'booking_date.required' => 'Please choose a booking date.',
             'booking_id.exists' => 'The selected booking is invalid.',

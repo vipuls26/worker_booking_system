@@ -36,6 +36,10 @@ const earningsSummary = computed(() => [
     { label: 'Available for payout', value: analytics.value.pending_payout || 0, icon: 'pi-wallet' },
     { label: 'Completed jobs', value: analytics.value.completed_bookings || 0, icon: 'pi-check-circle' },
 ]);
+const pendingRequestCount = computed(() => Number(analytics.value.pending_request_count || 0));
+const upcomingBookings = computed(() => analytics.value.upcoming_bookings || []);
+const availabilityConfigured = computed(() => analytics.value.availability.configured_days === 7);
+const recentReviewPreview = computed(() => (analytics.value.recent_reviews || []).slice(0, 3));
 
 const cardTones = ['blue', 'emerald', 'amber', 'violet'];
 
@@ -128,6 +132,80 @@ onMounted(async () => {
             </div>
         </Transition>
 
+        <Transition appear enter-active-class="fade-up-enter-active delay-50" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
+            <section v-if="!loading" class="mt-6 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <AppPanel class="p-5">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Upcoming bookings</p>
+                            <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Your next jobs</h2>
+                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Use this view to know what is coming next before you open the full bookings page.</p>
+                        </div>
+                        <RouterLink to="/worker/bookings" class="inline-flex w-fit items-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5">
+                            <i class="pi pi-arrow-right" aria-hidden="true"></i>
+                            Manage bookings
+                        </RouterLink>
+                    </div>
+
+                    <div v-if="upcomingBookings.length" class="mt-4 space-y-3">
+                        <article v-for="booking in upcomingBookings" :key="booking.id" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-gray-950">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="font-semibold text-gray-900 dark:text-white">{{ booking.service }}</p>
+                                        <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                                            Booking #BK-{{ String(booking.id).padStart(6, '0') }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ booking.customer }} · {{ booking.booking_date }} · {{ booking.start_time }} - {{ booking.end_time }}</p>
+                                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ booking.address }}</p>
+                                </div>
+                                <span class="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold capitalize text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                    {{ booking.status.replace('_', ' ') }}
+                                </span>
+                            </div>
+                        </article>
+                    </div>
+                    <div v-else class="mt-4 rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+                        No upcoming bookings yet. Accept new requests to fill your work queue.
+                    </div>
+                </AppPanel>
+
+                <AppPanel class="p-5">
+                    <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Booking request notifications</p>
+                    <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">What needs attention</h2>
+
+                    <div class="mt-4 rounded-xl border p-4" :class="pendingRequestCount > 0 ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10' : 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10'">
+                        <p class="text-3xl font-semibold" :class="pendingRequestCount > 0 ? 'text-amber-900 dark:text-amber-100' : 'text-emerald-900 dark:text-emerald-100'">
+                            {{ pendingRequestCount }}
+                        </p>
+                        <p class="mt-2 text-sm" :class="pendingRequestCount > 0 ? 'text-amber-800 dark:text-amber-200' : 'text-emerald-800 dark:text-emerald-200'">
+                            {{ pendingRequestCount > 0 ? 'Pending customer request notifications are waiting for your response.' : 'No pending request notifications right now.' }}
+                        </p>
+                    </div>
+
+                    <div class="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                        <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
+                            <p class="font-semibold text-gray-900 dark:text-white">Availability status</p>
+                            <p class="mt-1">
+                                {{ availabilityConfigured ? 'Your weekly availability is configured for all seven days.' : 'Some weekdays are still missing working hours or off-day settings.' }}
+                            </p>
+                        </div>
+                        <div class="grid gap-2 sm:grid-cols-2">
+                            <RouterLink to="/worker/booking-requests" class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
+                                <i class="pi pi-inbox" aria-hidden="true"></i>
+                                Review requests
+                            </RouterLink>
+                            <RouterLink to="/worker/availability" class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5">
+                                <i class="pi pi-calendar" aria-hidden="true"></i>
+                                Update hours
+                            </RouterLink>
+                        </div>
+                    </div>
+                </AppPanel>
+            </section>
+        </Transition>
+
         <SkeletonCard v-if="loading" class="mt-6" :lines="4" :avatar="false" />
 
         <Transition appear enter-active-class="fade-up-enter-active delay-75" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
@@ -218,7 +296,7 @@ onMounted(async () => {
             <div v-if="!loading" class="mt-6 grid gap-5 lg:grid-cols-2">
                 <AnalyticsBarChart title="Booking statuses" subtitle="Your active and completed booking split." :items="analytics.booking_statuses" />
                 <AnalyticsTable title="Top services" :rows="analytics.top_services" :columns="serviceColumns" />
-                <AnalyticsTable title="Recent reviews" :rows="analytics.recent_reviews" :columns="reviewColumns" />
+                <AnalyticsTable title="Recent reviews" :rows="recentReviewPreview" :columns="reviewColumns" />
             </div>
         </Transition>
 

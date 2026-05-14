@@ -1,17 +1,19 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUnblockRequests, approveUnblockRequest, rejectUnblockRequest } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
+import { useYupValidation } from '../../composables/useYupValidation';
 import AdminLayout from '../../layouts/AdminLayout.vue';
+import { adminUnblockReviewSchema } from '../../validation/adminSchemas';
 
 const route = useRoute();
 const router = useRouter();
@@ -26,6 +28,7 @@ const action = ref('');
 const adminNote = ref('');
 const reviewSaving = ref(false);
 const reviewError = ref('');
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(adminUnblockReviewSchema);
 
 const statusOptions = [
     { id: '', name: 'All statuses' },
@@ -72,9 +75,21 @@ function openReview(item, nextAction) {
     action.value = nextAction;
     adminNote.value = '';
     reviewError.value = '';
+    clearValidationErrors();
 }
 
 async function submitReview() {
+    clearValidationErrors();
+    const isValid = await validateWithSchema({
+        admin_note: adminNote.value,
+    });
+
+    if (! isValid) {
+        toast.error('Please fix the admin note field.');
+
+        return;
+    }
+
     reviewSaving.value = true;
     reviewError.value = '';
 
@@ -124,50 +139,85 @@ onMounted(() => {
     filtersReady.value = true;
     load();
 });
+
+watch(adminNote, () => clearValidationErrors('admin_note'));
 </script>
 
 <template>
     <AdminLayout title="Unblock Requests">
         <div class="space-y-4" data-testid="admin-unblock-requests-page">
-            <div class="grid gap-3 md:grid-cols-[1fr_220px]">
+            <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_200px]">
                 <SearchFilter v-model="search" placeholder="Search user, email, or appeal note" @search="load()" />
                 <FormSelect id="unblock_status" v-model="status" label="Status" :options="statusOptions" data-testid="admin-unblock-status-filter" />
             </div>
 
-            <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'reason', label: 'Reason' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="requests.length > 0">
-                <tr v-for="item in requests" :key="item.id" :data-testid="`admin-unblock-request-row-${item.id}`">
-                    <td class="px-4 py-3">
-                        <p class="font-medium text-gray-900 dark:text-white">{{ item.user?.name }}</p>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.user?.email }}</p>
-                        <div class="mt-2">
-                            <StatusBadge :value="item.account_status || item.user?.account_status || 'active'" />
+            <div class="space-y-3 md:hidden">
+                <div v-if="loading" class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading appeals...</p>
+                </div>
+
+                <div v-else-if="requests.length === 0" class="rounded-lg bg-white p-6 text-center text-sm text-gray-500 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-white/10">
+                    No unblock requests found. Try changing the search or status filter.
+                </div>
+
+                <article v-else v-for="item in requests" :key="item.id" class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-900 dark:text-white">{{ item.user?.name }}</p>
+                            <p class="truncate text-sm text-gray-500 dark:text-gray-400">{{ item.user?.email }}</p>
                         </div>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                        <p class="max-w-xl">{{ item.reason }}</p>
-                        <p v-if="item.admin_note" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin note: {{ item.admin_note }}</p>
-                        <p v-if="item.needs_reverification" class="mt-1 text-xs text-blue-600 dark:text-blue-300">Approval will still require reverification before full access returns.</p>
-                    </td>
-                    <td class="px-4 py-3"><StatusBadge :value="item.status" /></td>
-                    <td class="px-4 py-3 text-right">
-                        <template v-if="item.status === 'pending'">
-                            <div class="flex flex-wrap justify-end gap-2">
-                            <button :class="successChip" :data-testid="`admin-unblock-request-approve-${item.id}`" @click="openReview(item, 'approve')">Approve</button>
-                            <button :class="dangerChip" :data-testid="`admin-unblock-request-reject-${item.id}`" @click="openReview(item, 'reject')">Reject</button>
+                        <StatusBadge :value="item.status" />
+                    </div>
+
+                    <div class="mt-3">
+                        <StatusBadge :value="item.account_status || item.user?.account_status || 'active'" />
+                    </div>
+
+                    <p class="mt-4 text-sm text-gray-700 dark:text-gray-200">{{ item.reason }}</p>
+                    <p v-if="item.admin_note" class="mt-2 text-xs text-gray-500 dark:text-gray-400">Admin note: {{ item.admin_note }}</p>
+
+                    <div v-if="item.status === 'pending'" class="mt-4 flex flex-wrap gap-2">
+                        <button :class="successChip" :data-testid="`admin-unblock-request-approve-${item.id}`" @click="openReview(item, 'approve')">Approve</button>
+                        <button :class="dangerChip" :data-testid="`admin-unblock-request-reject-${item.id}`" @click="openReview(item, 'reject')">Reject</button>
+                    </div>
+                </article>
+            </div>
+
+            <div class="hidden md:block">
+                <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'reason', label: 'Reason' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="requests.length > 0">
+                    <tr v-for="item in requests" :key="item.id" :data-testid="`admin-unblock-request-row-${item.id}`">
+                        <td class="px-3 py-2.5 lg:px-4 lg:py-3">
+                            <p class="font-medium text-gray-900 dark:text-white">{{ item.user?.name }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.user?.email }}</p>
+                            <div class="mt-2">
+                                <StatusBadge :value="item.account_status || item.user?.account_status || 'active'" />
                             </div>
-                        </template>
-                    </td>
-                </tr>
-            </AdminTable>
+                        </td>
+                        <td class="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 lg:px-4 lg:py-3">
+                            <p class="max-w-xl">{{ item.reason }}</p>
+                            <p v-if="item.admin_note" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin note: {{ item.admin_note }}</p>
+                        </td>
+                        <td class="px-3 py-2.5 lg:px-4 lg:py-3"><StatusBadge :value="item.status" /></td>
+                        <td class="px-3 py-2.5 text-right lg:px-4 lg:py-3">
+                            <template v-if="item.status === 'pending'">
+                                <div class="flex flex-wrap justify-end gap-1.5 lg:gap-2">
+                                <button :class="successChip" :data-testid="`admin-unblock-request-approve-${item.id}`" @click="openReview(item, 'approve')">Approve</button>
+                                <button :class="dangerChip" :data-testid="`admin-unblock-request-reject-${item.id}`" @click="openReview(item, 'reject')">Reject</button>
+                                </div>
+                            </template>
+                        </td>
+                    </tr>
+                </AdminTable>
+            </div>
 
             <PaginationControls :meta="meta" @change="load" />
         </div>
 
-        <div v-if="reviewing" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" data-testid="admin-unblock-review-modal">
-            <form class="w-full max-w-sm space-y-4 rounded-lg bg-white p-5 dark:bg-gray-900" @submit.prevent="submitReview">
+        <div v-if="reviewing" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-4 sm:items-center" data-testid="admin-unblock-review-modal">
+            <form class="w-full max-w-md space-y-4 rounded-lg bg-white p-5 shadow-xl ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10" @submit.prevent="submitReview">
                 <h2 class="font-semibold capitalize text-gray-900 dark:text-white">{{ action }} unblock request</h2>
                 <p v-if="reviewError" class="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">{{ reviewError }}</p>
-                <FormTextarea id="unblock_admin_note" v-model="adminNote" label="Admin note optional" data-testid="admin-unblock-admin-note" />
+                <FormTextarea id="unblock_admin_note" v-model="adminNote" label="Admin note optional" :error="validationErrors.admin_note || []" data-testid="admin-unblock-admin-note" />
                 <AppButton type="submit" :loading="reviewSaving" :icon="action === 'approve' ? 'pi-check' : 'pi-times'" data-testid="admin-unblock-review-submit">{{ action === 'approve' ? 'Approve' : 'Reject' }}</AppButton>
                 <button type="button" class="w-full text-sm text-gray-600 dark:text-gray-400" @click="reviewing = null">Cancel</button>
             </form>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getStoredAuthToken } from '../lib/authStorage';
+import { clearStoredAuthSession, getStoredAuthToken, setStoredAuthNotice } from '../lib/authStorage';
 
 const http = axios.create({
     baseURL: '/api',
@@ -24,5 +24,31 @@ http.interceptors.request.use((config) => {
 
     return config;
 });
+
+http.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        const statusCode = error.response?.status;
+        const requestUrl = error.config?.url || '';
+        const hasToken = Boolean(getStoredAuthToken());
+        const isAuthRecoveryRequest = [
+            '/auth/login',
+            '/auth/register',
+            '/auth/forgot-password',
+            '/auth/reset-password',
+        ].includes(requestUrl);
+
+        if (statusCode === 401 && hasToken && ! isAuthRecoveryRequest) {
+            clearStoredAuthSession();
+            setStoredAuthNotice('Your session expired. Please sign in again.');
+
+            if (window.location.pathname !== '/login') {
+                window.location.assign('/login');
+            }
+        }
+
+        return Promise.reject(error);
+    },
+);
 
 export default http;

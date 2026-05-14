@@ -86,7 +86,7 @@ onMounted(() => {
 <template>
     <DashboardLayout title="My Reviews">
         <div class="space-y-5">
-            <section class="grid gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 md:grid-cols-[minmax(0,1fr)_220px_220px] md:items-end">
+            <section class="grid gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 xl:grid-cols-[minmax(0,1fr)_200px_200px] xl:items-end">
                 <div class="space-y-4">
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Average rating</p>
                     <div class="mt-2 flex items-center gap-3">

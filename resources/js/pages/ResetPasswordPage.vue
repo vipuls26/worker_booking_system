@@ -1,17 +1,20 @@
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../components/common/AppButton.vue';
 import FormInput from '../components/forms/FormInput.vue';
 import { useApiErrors } from '../composables/useApiErrors';
+import { useYupValidation } from '../composables/useYupValidation';
 import AuthLayout from '../layouts/AuthLayout.vue';
 import { useAuthStore } from '../stores/auth';
+import { resetPasswordSchema } from '../validation/authSchemas';
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(resetPasswordSchema);
 const loading = ref(false);
 
 function queryString(value) {
@@ -26,8 +29,22 @@ const form = reactive({
 });
 
 async function submit() {
-    loading.value = true;
+    if (loading.value) {
+        return;
+    }
+
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted password reset fields.');
+
+        return;
+    }
+
+    loading.value = true;
 
     try {
         const response = await authStore.resetPassword(form);
@@ -40,6 +57,10 @@ async function submit() {
         loading.value = false;
     }
 }
+
+watch(() => form.email, () => clearValidationErrors('email'));
+watch(() => form.password, () => clearValidationErrors(['password', 'password_confirmation']));
+watch(() => form.password_confirmation, () => clearValidationErrors('password_confirmation'));
 </script>
 
 <template>
@@ -60,15 +81,15 @@ async function submit() {
                 Reset token is missing. Open the link from your reset email.
             </div>
 
-            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="errors.email" data-testid="reset-password-email" />
-            <FormInput id="password" v-model="form.password" label="New password" type="password" autocomplete="new-password" :error="errors.password" data-testid="reset-password-new-password" />
+            <FormInput id="email" v-model="form.email" label="Email" type="email" autocomplete="email" :error="validationErrors.email || errors.email || []" data-testid="reset-password-email" />
+            <FormInput id="password" v-model="form.password" label="New password" type="password" autocomplete="new-password" :error="validationErrors.password || errors.password || []" data-testid="reset-password-new-password" />
             <FormInput
                 id="password_confirmation"
                 v-model="form.password_confirmation"
                 label="Confirm password"
                 type="password"
                 autocomplete="new-password"
-                :error="errors.password_confirmation"
+                :error="validationErrors.password_confirmation || errors.password_confirmation || []"
                 data-testid="reset-password-confirm-password"
             />
 

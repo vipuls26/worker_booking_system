@@ -1,9 +1,8 @@
 <script setup>
-import { Chart, registerables } from 'chart.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useTheme } from '../../composables/useTheme';
 
-Chart.register(...registerables);
+let chartConstructorPromise = null;
 
 const props = defineProps({
     title: {
@@ -36,6 +35,18 @@ const props = defineProps({
 const { isDark } = useTheme();
 const canvas = ref(null);
 let chart = null;
+
+async function loadChartConstructor() {
+    if (! chartConstructorPromise) {
+        chartConstructorPromise = import('chart.js').then(({ Chart, registerables }) => {
+            Chart.register(...registerables);
+
+            return Chart;
+        });
+    }
+
+    return chartConstructorPromise;
+}
 
 const chartItems = computed(() => props.items.map((item) => ({
     label: String(item.label).replace('_', ' '),
@@ -174,7 +185,7 @@ function chartOptions() {
 async function renderChart() {
     await nextTick();
 
-    if (!canvas.value || !hasItems.value) {
+    if (! canvas.value || ! hasItems.value) {
         chart?.destroy();
         chart = null;
 
@@ -188,6 +199,8 @@ async function renderChart() {
 
         return;
     }
+
+    const Chart = await loadChartConstructor();
 
     chart = new Chart(canvas.value, {
         type: props.chartType,

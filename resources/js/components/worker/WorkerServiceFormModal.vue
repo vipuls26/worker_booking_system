@@ -4,6 +4,8 @@ import AppButton from '../common/AppButton.vue';
 import FormInput from '../forms/FormInput.vue';
 import FormSelect from '../forms/FormSelect.vue';
 import FormTextarea from '../forms/FormTextarea.vue';
+import { useYupValidation } from '../../composables/useYupValidation';
+import { workerServiceSchema } from '../../validation/workerSchemas';
 
 const props = defineProps({
     open: {
@@ -29,6 +31,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'submit']);
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(workerServiceSchema);
 const isRejectedReapply = computed(() => props.workerService?.approval_status === 'rejected');
 const title = computed(() => {
     if (isRejectedReapply.value) {
@@ -62,6 +65,7 @@ const form = reactive({
 watch(
     () => [props.open, props.workerService],
     () => {
+        clearValidationErrors();
         Object.assign(form, {
             service_id: props.workerService?.service_id || '',
             pricing_type: props.workerService?.pricing_type || 'fixed',
@@ -74,12 +78,25 @@ watch(
     { immediate: true },
 );
 
-function submit() {
+async function submit() {
+    clearValidationErrors();
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        return;
+    }
+
     emit('submit', {
         ...form,
         minimum_hours: form.pricing_type === 'hourly' ? form.minimum_hours : null,
     });
 }
+
+watch(() => form.service_id, () => clearValidationErrors('service_id'));
+watch(() => form.pricing_type, () => clearValidationErrors(['pricing_type', 'minimum_hours']));
+watch(() => form.price, () => clearValidationErrors('price'));
+watch(() => form.minimum_hours, () => clearValidationErrors('minimum_hours'));
+watch(() => form.description, () => clearValidationErrors('description'));
 </script>
 
 <template>
@@ -101,7 +118,7 @@ function submit() {
                     option-label="name"
                     option-value="id"
                     placeholder="Select a service"
-                    :error="errors.service_id"
+                    :error="validationErrors.service_id || errors.service_id || []"
                     data-testid="worker-service-form-service"
                 />
 
@@ -112,12 +129,12 @@ function submit() {
                     :options="pricingTypes"
                     option-label="label"
                     option-value="value"
-                    :error="errors.pricing_type"
+                    :error="validationErrors.pricing_type || errors.pricing_type || []"
                     data-testid="worker-service-form-pricing-type"
                 />
 
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <FormInput id="worker_service_price" v-model="form.price" label="Price" type="number" min="1" step="0.01" :error="errors.price" data-testid="worker-service-form-price" />
+                    <FormInput id="worker_service_price" v-model="form.price" label="Price" type="number" min="1" step="0.01" :error="validationErrors.price || errors.price || []" data-testid="worker-service-form-price" />
                     <FormInput
                         v-if="form.pricing_type === 'hourly'"
                         id="worker_service_minimum_hours"
@@ -127,7 +144,7 @@ function submit() {
                         min="1"
                         max="24"
                         step="1"
-                        :error="errors.minimum_hours"
+                        :error="validationErrors.minimum_hours || errors.minimum_hours || []"
                         data-testid="worker-service-form-minimum-hours"
                     />
                 </div>
@@ -143,7 +160,7 @@ function submit() {
                     Service requests stay hidden from customers until an admin approves them. Reapplying updates the rejected request and sends it back for approval.
                 </div>
 
-                <FormTextarea id="worker_service_description" v-model="form.description" label="Description" :error="errors.description" data-testid="worker-service-form-description" />
+                <FormTextarea id="worker_service_description" v-model="form.description" label="Description" :error="validationErrors.description || errors.description || []" data-testid="worker-service-form-description" />
 
                 <div class="grid gap-2 pt-2 sm:flex sm:justify-end">
                     <button type="button" data-testid="worker-service-form-cancel" class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-[0_3px_0_#bfdbfe,0_8px_16px_rgba(37,99,235,0.12)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-blue-100 active:translate-y-0.5 active:shadow-[0_1px_0_#bfdbfe,0_5px_10px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:shadow-[0_3px_0_rgba(59,130,246,0.18)] dark:hover:bg-white/10" @click="$emit('close')">

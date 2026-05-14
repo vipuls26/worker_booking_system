@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminAuditLogs, adminBookingAuditLogs, adminUserAuditLogs } from '../../api/admin';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import AppPanel from '../../components/common/AppPanel.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormInput from '../../components/forms/FormInput.vue';
@@ -275,7 +275,7 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div class="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_190px_160px_160px_160px_auto] xl:items-end">
+                    <div class="grid gap-3 2xl:grid-cols-[minmax(280px,1fr)_190px_160px_160px_160px_auto] 2xl:items-end">
                         <div class="xl:min-w-0">
                             <SearchFilter v-model="filters.search" placeholder="Search actor, IP, action, or subject" @search="load()" />
                         </div>
@@ -292,9 +292,9 @@ onMounted(() => {
                             @click="resetFilters"
                         >
                             <i class="pi pi-filter-slash" aria-hidden="true"></i>
-                            <span class="xl:hidden 2xl:inline">Clear</span>
+                            <span>Clear</span>
                         </button>
-                        <div v-else class="hidden h-10 xl:block"></div>
+                        <div v-else class="hidden h-10 2xl:block"></div>
                     </div>
                 </div>
             </AppPanel>
@@ -323,7 +323,7 @@ onMounted(() => {
                         </div>
 
                         <div class="min-w-0 flex-1">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                                 <div class="min-w-0">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2 class="font-semibold text-gray-900 dark:text-white">{{ log.action_label }}</h2>

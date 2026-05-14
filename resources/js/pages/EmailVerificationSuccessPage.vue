@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import AppButton from '../components/common/AppButton.vue';
 import ThemeToggle from '../components/common/ThemeToggle.vue';
@@ -9,6 +9,7 @@ const authStore = useAuthStore();
 const route = useRoute();
 const refreshed = ref(false);
 const isExpired = route.query.status === 'expired';
+const hasCurrentTabSession = computed(() => Boolean(authStore.token));
 
 onMounted(async () => {
     if (isExpired || ! authStore.token) {
@@ -43,6 +44,10 @@ onMounted(async () => {
                 {{ isExpired ? 'Request a new email verification link from your account and try again.' : 'Your email ownership is confirmed. Admin profile approval is handled separately and may still be pending.' }}
             </p>
 
+            <p v-if="!isExpired && !hasCurrentTabSession" class="mt-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-500/10 dark:text-blue-200">
+                This verification link opened in a new tab, so it cannot see your signed-in session from the original tab. Return to the tab where you already logged in. That tab should update automatically. Only sign in again if you no longer have the original tab open.
+            </p>
+
             <div class="mt-6">
                 <RouterLink v-if="isExpired && authStore.isAuthenticated" to="/email/verify">
                     <AppButton type="button" icon="pi-send">
@@ -61,7 +66,7 @@ onMounted(async () => {
                     to="/login"
                     class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
                 >
-                    Login
+                    Sign in again
                 </RouterLink>
             </div>
         </section>

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';

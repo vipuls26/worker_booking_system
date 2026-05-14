@@ -1,15 +1,12 @@
 import http from '../http';
+import { withIdempotencyKey } from '../../lib/idempotency';
 
 export function listBookings(params = {}) {
     return http.get('/worker/bookings', { params });
 }
 
-export function getBooking(id) {
-    return http.get(`/worker/bookings/${id}`);
-}
-
 export function updateBookingStatus(id, payload) {
-    return http.patch(`/worker/bookings/${id}/status`, payload);
+    return http.patch(`/worker/bookings/${id}/status`, payload, withIdempotencyKey(`worker-booking-status:${id}`));
 }
 
 export function submitCustomerReview(id, payload) {

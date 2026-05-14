@@ -5,6 +5,7 @@ namespace App\Services\Worker;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\Review;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
 use App\Models\WorkerPayout;
 use App\Models\WorkerSchedule;
@@ -26,6 +27,7 @@ class DashboardAnalyticsService
         $pendingPayout = max(round($earnings - $paidOut, 2), 0);
         $completedBookingsCount = $this->completedBookings($worker)->count();
         $averageRating = round((float) ($worker->workerReviews()->avg('rating') ?: 0), 2);
+        $pendingRequestCount = $this->pendingRequestCount($worker);
 
         return [
             'earnings' => $earnings,
@@ -46,6 +48,8 @@ class DashboardAnalyticsService
             'top_services' => $this->topServices($worker),
             'recent_reviews' => $this->recentReviews($worker),
             'availability' => $this->availabilitySummary($worker),
+            'pending_request_count' => $pendingRequestCount,
+            'upcoming_bookings' => $this->upcomingBookings($worker),
         ];
     }
 
@@ -239,6 +243,52 @@ class DashboardAnalyticsService
                 ->all(),
             'next_off_day' => $this->nextOffDay($schedules),
         ];
+    }
+
+    /**
+     * Count booking requests that still need a worker response.
+     */
+    private function pendingRequestCount(User $worker): int
+    {
+        // Pending request count drives the worker dashboard notification summary.
+        return ServiceRequestWorker::query()
+            ->where('worker_id', $worker->id)
+            ->where('status', ServiceRequestWorker::STATUS_PENDING)
+            ->count();
+    }
+
+    /**
+     * @return Collection<int, array{id: int, customer: string, service: string, booking_date: string, start_time: string, end_time: string, status: string, address: string}>
+     */
+    private function upcomingBookings(User $worker): Collection
+    {
+        $today = CarbonImmutable::now()->toDateString();
+
+        // Upcoming work stays focused on active future bookings the worker still needs to deliver.
+        return $worker->workerBookings()
+            ->with(['customer:id,name', 'service:id,name'])
+            ->whereDate('booking_date', '>=', $today)
+            ->whereNotIn('status', [
+                Booking::STATUS_COMPLETED,
+                Booking::STATUS_CANCELLED,
+                Booking::STATUS_REJECTED,
+            ])
+            ->orderBy('booking_date')
+            ->orderBy('start_time')
+            ->limit(4)
+            ->get()
+            ->map(function (Booking $booking): array {
+                return [
+                    'id' => $booking->id,
+                    'customer' => (string) ($booking->customer?->name ?? 'Customer'),
+                    'service' => (string) ($booking->service?->name ?? 'Service'),
+                    'booking_date' => (string) $booking->booking_date,
+                    'start_time' => (string) $booking->start_time,
+                    'end_time' => (string) $booking->end_time,
+                    'status' => (string) $booking->status,
+                    'address' => (string) $booking->address,
+                ];
+            });
     }
 
     /**

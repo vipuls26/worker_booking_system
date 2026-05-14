@@ -87,7 +87,7 @@ class UnblockRequestWorkflowTest extends TestCase
         );
     }
 
-    public function test_admin_approval_moves_fully_blocked_user_into_reverification_state(): void
+    public function test_admin_approval_fully_restores_fully_blocked_user(): void
     {
         Notification::fake();
 
@@ -104,11 +104,11 @@ class UnblockRequestWorkflowTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('data.unblock_request.status', UnblockRequest::STATUS_APPROVED)
-            ->assertJsonPath('data.unblock_request.needs_reverification', true);
+            ->assertJsonPath('data.unblock_request.needs_reverification', false);
 
         $this->assertDatabaseHas('users', [
             'id' => $blockedUser->id,
-            'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+            'account_status' => User::STATUS_ACTIVE,
             'is_blocked' => false,
         ]);
 
@@ -119,7 +119,8 @@ class UnblockRequestWorkflowTest extends TestCase
                 $payload = $notification->toArray($blockedUser);
 
                 return $payload['event'] === 'unblock_request_approved'
-                    && $payload['needs_reverification'] === true;
+                    && $payload['needs_reverification'] === false
+                    && $payload['account_status'] === User::STATUS_ACTIVE;
             }
         );
     }

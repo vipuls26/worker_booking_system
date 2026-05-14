@@ -1,14 +1,17 @@
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import AppButton from '../common/AppButton.vue';
 import AppPanel from '../common/AppPanel.vue';
 import FormInput from '../forms/FormInput.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import { useAuthStore } from '../../stores/auth';
+import { passwordUpdateSchema } from '../../validation/authSchemas';
 
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(passwordUpdateSchema);
 const saving = ref(false);
 const sendingResetLink = ref(false);
 const form = reactive({
@@ -32,6 +35,16 @@ function resetForm() {
  */
 async function submit() {
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted password fields.');
+
+        return;
+    }
+
     saving.value = true;
 
     try {
@@ -71,6 +84,10 @@ async function sendResetLink() {
         sendingResetLink.value = false;
     }
 }
+
+watch(() => form.current_password, () => clearValidationErrors(['current_password', 'password']));
+watch(() => form.password, () => clearValidationErrors(['password', 'password_confirmation']));
+watch(() => form.password_confirmation, () => clearValidationErrors('password_confirmation'));
 </script>
 
 <template>
@@ -96,9 +113,9 @@ async function sendResetLink() {
             </div>
 
             <div class="grid gap-4">
-                <FormInput id="current_password" v-model="form.current_password" type="password" label="Current password" autocomplete="current-password" :error="errors.current_password" />
-                <FormInput id="new_password" v-model="form.password" type="password" label="New password" autocomplete="new-password" :error="errors.password" />
-                <FormInput id="new_password_confirmation" v-model="form.password_confirmation" type="password" label="Confirm new password" autocomplete="new-password" :error="errors.password_confirmation" />
+                <FormInput id="current_password" v-model="form.current_password" type="password" label="Current password" autocomplete="current-password" :error="validationErrors.current_password || errors.current_password || []" />
+                <FormInput id="new_password" v-model="form.password" type="password" label="New password" autocomplete="new-password" :error="validationErrors.password || errors.password || []" />
+                <FormInput id="new_password_confirmation" v-model="form.password_confirmation" type="password" label="Confirm new password" autocomplete="new-password" :error="validationErrors.password_confirmation || errors.password_confirmation || []" />
             </div>
 
             <div class="flex flex-col gap-3 border-t border-gray-200 pt-5 dark:border-white/10 sm:flex-row sm:items-center sm:justify-end">

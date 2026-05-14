@@ -95,6 +95,18 @@ class AuthApiTest extends TestCase
             'phone' => '9000000010',
             'role_id' => $customerRole->id,
         ]);
+
+        $issuedToken = User::query()
+            ->where('email', 'jane@example.com')
+            ->firstOrFail()
+            ->tokens()
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($issuedToken);
+        $this->assertSame('frontend-spa', $issuedToken->name);
+        $this->assertSame(['spa'], $issuedToken->abilities);
+        $this->assertNotNull($issuedToken->expires_at);
     }
 
     public function test_user_can_login_get_me_and_logout(): void
@@ -131,6 +143,22 @@ class AuthApiTest extends TestCase
             ->assertJsonPath('message', 'Logout successful');
     }
 
+    public function test_api_rejects_personal_access_token_that_was_not_issued_for_the_frontend(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $user = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create();
+
+        $token = $user->createToken('server-script')->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson('/api/auth/me')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated');
+    }
+
     public function test_login_rejects_invalid_credentials(): void
     {
         $response = $this->postJson('/api/auth/login', [
@@ -142,6 +170,23 @@ class AuthApiTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Invalid credentials');
+    }
+
+    public function test_login_is_rate_limited_after_too_many_attempts(): void
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $this->postJson('/api/auth/login', [
+                'email' => 'missing@example.com',
+                'password' => 'password',
+            ])->assertUnprocessable();
+        }
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'missing@example.com',
+            'password' => 'password',
+        ])
+            ->assertStatus(429)
+            ->assertJsonPath('message', 'Too many attempts. Please try again shortly.');
     }
 
     public function test_user_can_request_password_reset_link(): void

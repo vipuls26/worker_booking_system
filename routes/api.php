@@ -275,13 +275,13 @@ Route::middleware(['auth:sanctum', 'not.blocked', 'role:customer'])->prefix('cus
         Route::get('worker-search-options', [WorkerSearchController::class, 'options']);
 
         // Search marketplace-ready workers.
-        Route::get('workers', [WorkerSearchController::class, 'index']);
+        Route::get('workers', [WorkerSearchController::class, 'index'])->middleware('throttle:worker-search');
 
         // Show one marketplace-ready worker and availability.
-        Route::get('workers/{worker}', [WorkerSearchController::class, 'show']);
+        Route::get('workers/{worker}', [WorkerSearchController::class, 'show'])->middleware('throttle:worker-search');
 
         // List reviews for one worker.
-        Route::get('workers/{worker}/reviews', [ReviewController::class, 'workerReviews']);
+        Route::get('workers/{worker}/reviews', [ReviewController::class, 'workerReviews'])->middleware('throttle:worker-search');
 
         // List the customer's booking requests.
         Route::get('bookings', [CustomerBookingController::class, 'index']);

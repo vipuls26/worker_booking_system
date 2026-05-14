@@ -10,6 +10,12 @@ use Illuminate\Validation\ValidationException;
 
 class AuthService
 {
+    private const FRONTEND_TOKEN_ABILITY = 'spa';
+
+    private const FRONTEND_TOKEN_EXPIRATION_HOURS = 12;
+
+    private const FRONTEND_TOKEN_NAME = 'frontend-spa';
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -34,7 +40,7 @@ class AuthService
 
         return [
             'user' => $user,
-            'token' => $user->createToken('api-token')->plainTextToken,
+            'token' => $this->issueFrontendToken($user),
         ];
     }
 
@@ -63,7 +69,19 @@ class AuthService
 
         return [
             'user' => $user,
-            'token' => $user->createToken('api-token')->plainTextToken,
+            'token' => $this->issueFrontendToken($user),
         ];
+    }
+
+    /**
+     * Issue a browser session token that is scoped to the SPA and expires automatically.
+     */
+    private function issueFrontendToken(User $user): string
+    {
+        return $user->createToken(
+            self::FRONTEND_TOKEN_NAME,
+            [self::FRONTEND_TOKEN_ABILITY],
+            now()->addHours(self::FRONTEND_TOKEN_EXPIRATION_HOURS),
+        )->plainTextToken;
     }
 }

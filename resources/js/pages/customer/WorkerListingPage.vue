@@ -9,6 +9,7 @@ import WorkerCard from '../../components/customer/WorkerCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
@@ -47,8 +48,11 @@ const { errors, setApiError, clearApiErrors } = useApiErrors();
 const showAdvancedFilters = ref(false);
 const filtersReady = ref(false);
 const frontendErrors = reactive({
+    service_id: [],
     booking_date: [],
     start_time: [],
+    address: [],
+    issue_description: [],
 });
 
 const requestForm = reactive({
@@ -90,6 +94,10 @@ const dateShortcuts = computed(() => [
 ]);
 const activeFilterLabels = computed(() => {
     const labels = [];
+
+    if (workersStore.filters.search) {
+        labels.push(`"${workersStore.filters.search}"`);
+    }
 
     if (selectedService.value) {
         labels.push(selectedService.value.name);
@@ -165,6 +173,7 @@ function applyQuickFilter(filter) {
 }
 
 function resetFilters() {
+    workersStore.filters.search = '';
     workersStore.filters.service_id = '';
     workersStore.filters.min_rating = '';
     workersStore.filters.max_price = '';
@@ -257,7 +266,7 @@ function minutesBetween(start, end) {
 }
 
 function applyRouteFilters() {
-    const allowedFilters = ['service_id', 'city', 'max_price', 'min_rating', 'sort'];
+    const allowedFilters = ['search', 'service_id', 'city', 'max_price', 'min_rating', 'sort'];
 
     allowedFilters.forEach((key) => {
         if (route.query[key] !== undefined) {
@@ -267,8 +276,27 @@ function applyRouteFilters() {
 }
 
 function clearFrontendErrors() {
+    frontendErrors.service_id = [];
     frontendErrors.booking_date = [];
     frontendErrors.start_time = [];
+    frontendErrors.address = [];
+    frontendErrors.issue_description = [];
+}
+
+function syncFiltersToRoute() {
+    const nextQuery = {
+        ...(workersStore.filters.search ? { search: workersStore.filters.search } : {}),
+        ...(workersStore.filters.service_id ? { service_id: workersStore.filters.service_id } : {}),
+        ...(workersStore.filters.city ? { city: workersStore.filters.city } : {}),
+        ...(workersStore.filters.max_price ? { max_price: workersStore.filters.max_price } : {}),
+        ...(workersStore.filters.min_rating ? { min_rating: workersStore.filters.min_rating } : {}),
+        ...(workersStore.filters.sort && workersStore.filters.sort !== 'relevance' ? { sort: workersStore.filters.sort } : {}),
+    };
+
+    router.replace({
+        path: route.path,
+        query: nextQuery,
+    });
 }
 
 function validateRequestSchedule() {
@@ -291,12 +319,39 @@ function validateRequestSchedule() {
     return true;
 }
 
+function validateRequestForm() {
+    const minimumIssueDescriptionLength = 10;
+
+    if (! validateRequestSchedule()) {
+        return false;
+    }
+
+    // A request must include a service so workers know which approved category is being booked.
+    if (! requestForm.service_id) {
+        frontendErrors.service_id = ['Please choose a service.'];
+    }
+
+    // A service address is required so the worker knows where to travel before accepting.
+    if (! requestForm.address.trim()) {
+        frontendErrors.address = ['Add a service address or save a default address in your profile.'];
+    }
+
+    // A meaningful issue note helps workers estimate the job accurately.
+    if (! requestForm.issue_description.trim()) {
+        frontendErrors.issue_description = ['Please describe the issue.'];
+    } else if (requestForm.issue_description.trim().length < minimumIssueDescriptionLength) {
+        frontendErrors.issue_description = [`Please describe the issue in at least ${minimumIssueDescriptionLength} characters.`];
+    }
+
+    return Object.values(frontendErrors).every((messages) => messages.length === 0);
+}
+
 async function sendRequest() {
     clearApiErrors();
     clearFrontendErrors();
     syncRequestEndTime();
 
-    if (! validateRequestSchedule()) {
+    if (! validateRequestForm()) {
         return;
     }
 
@@ -313,6 +368,7 @@ async function sendRequest() {
 
 useDebouncedWatch(
     () => [
+        workersStore.filters.search,
         workersStore.filters.service_id,
         workersStore.filters.min_rating,
         workersStore.filters.max_price,
@@ -324,6 +380,7 @@ useDebouncedWatch(
     ],
     () => {
         if (filtersReady.value) {
+            syncFiltersToRoute();
             load();
         }
     },
@@ -340,6 +397,7 @@ watch(
     () => requestForm.service_id,
     (serviceId) => {
         workersStore.filters.service_id = serviceId || '';
+        frontendErrors.service_id = [];
     },
 );
 
@@ -394,6 +452,20 @@ watch(
 
         frontendErrors.start_time = [];
         syncRequestEndTime();
+    },
+);
+
+watch(
+    () => requestForm.address,
+    () => {
+        frontendErrors.address = [];
+    },
+);
+
+watch(
+    () => requestForm.issue_description,
+    () => {
+        frontendErrors.issue_description = [];
     },
 );
 
@@ -455,6 +527,14 @@ onMounted(async () => {
                 </div>
 
                 <div class="p-4 sm:p-5">
+                    <div class="mb-4">
+                        <SearchFilter
+                            v-model="workersStore.filters.search"
+                            placeholder="Search by worker, service, city, or skill"
+                            @search="load()"
+                        />
+                    </div>
+
                     <div class="grid grid-cols-2 gap-2 sm:flex sm:gap-3 sm:overflow-x-auto sm:pb-1">
                         <button
                             v-for="service in workersStore.serviceOptions.slice(0, 8)"
@@ -594,7 +674,14 @@ onMounted(async () => {
                             </div>
                         </div>
                         <div class="mt-4">
-                            <FormSelect id="request_service_id" v-model="requestForm.service_id" label="Service" :options="workersStore.serviceOptions" placeholder="Select service" :error="errors.service_id" />
+                            <FormSelect
+                                id="request_service_id"
+                                v-model="requestForm.service_id"
+                                label="Service"
+                                :options="workersStore.serviceOptions"
+                                placeholder="Select service"
+                                :error="frontendErrors.service_id.length ? frontendErrors.service_id : errors.service_id"
+                            />
                         </div>
                     </div>
 
@@ -710,8 +797,8 @@ onMounted(async () => {
                         </div>
 
                         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-                            <FormInput id="request_address" v-model="requestForm.address" label="Address" :error="errors.address" />
-                            <FormTextarea id="request_issue_description" v-model="requestForm.issue_description" label="Issue description" rows="3" placeholder="Example: AC is not cooling properly." :error="errors.issue_description" />
+                            <FormInput id="request_address" v-model="requestForm.address" label="Address" :error="frontendErrors.address.length ? frontendErrors.address : errors.address" />
+                            <FormTextarea id="request_issue_description" v-model="requestForm.issue_description" label="Issue description" rows="3" placeholder="Example: AC is not cooling properly." :error="frontendErrors.issue_description.length ? frontendErrors.issue_description : errors.issue_description" />
                         </div>
                     </div>
 

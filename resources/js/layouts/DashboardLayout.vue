@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import NotificationDropdown from '../components/common/NotificationDropdown.vue';
 import ThemeToggle from '../components/common/ThemeToggle.vue';
 import VerificationBanner from '../components/common/VerificationBanner.vue';
@@ -14,6 +14,7 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const navigationByRole = {
@@ -54,6 +55,34 @@ async function handleLogout() {
     await router.push('/login');
 }
 
+function isActivePath(path) {
+    return route.path === path;
+}
+
+function desktopSidebarLinkClass(item) {
+    const activeClasses = 'bg-blue-600 text-white dark:bg-blue-500 dark:text-white';
+    const inactiveClasses = 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white';
+    const disabledClasses = item.requiresVerified && !canAccessProtectedFeatures.value ? 'opacity-60' : '';
+
+    return [
+        'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition',
+        isActivePath(item.path) ? activeClasses : inactiveClasses,
+        disabledClasses,
+    ];
+}
+
+function mobileSidebarLinkClass(item) {
+    const activeClasses = 'border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500 dark:text-white';
+    const inactiveClasses = 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800';
+    const disabledClasses = item.requiresVerified && !canAccessProtectedFeatures.value ? 'opacity-60' : '';
+
+    return [
+        'inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition',
+        isActivePath(item.path) ? activeClasses : inactiveClasses,
+        disabledClasses,
+    ];
+}
+
 onMounted(() => {
     authStore.refreshUser().catch(() => {});
 });
@@ -86,9 +115,7 @@ onMounted(() => {
                     :key="item.path"
                     :to="item.path"
                     :data-testid="`desktop-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`"
-                    class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                    :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
-                    active-class="bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-500"
+                    :class="desktopSidebarLinkClass(item)"
                 >
                     <i :class="['pi', item.icon]" aria-hidden="true"></i>
                     <span class="flex-1">{{ item.label }}</span>
@@ -143,9 +170,7 @@ onMounted(() => {
                         :key="item.path"
                         :to="item.path"
                         :data-testid="`mobile-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`"
-                        class="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        :class="item.requiresVerified && !canAccessProtectedFeatures ? 'opacity-60' : ''"
-                        active-class="bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
+                        :class="mobileSidebarLinkClass(item)"
                     >
                         <i :class="['pi', item.icon]" aria-hidden="true"></i>
                         {{ item.label }}

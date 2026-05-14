@@ -1,5 +1,5 @@
 <script setup>
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import NotificationDropdown from '../components/common/NotificationDropdown.vue';
 import ThemeToggle from '../components/common/ThemeToggle.vue';
 import { useAuthStore } from '../stores/auth';
@@ -12,6 +12,7 @@ defineProps({
 });
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const navigation = [
@@ -30,6 +31,26 @@ const navigation = [
 async function logout() {
     await authStore.logout();
     await router.push('/login');
+}
+
+function isActivePath(path) {
+    return route.path === path;
+}
+
+function desktopSidebarLinkClass(path) {
+    if (isActivePath(path)) {
+        return 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition bg-blue-600 text-white dark:bg-blue-500 dark:text-white';
+    }
+
+    return 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white';
+}
+
+function mobileSidebarLinkClass(path) {
+    if (isActivePath(path)) {
+        return 'inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-medium text-white transition dark:border-blue-500 dark:bg-blue-500 dark:text-white';
+    }
+
+    return 'inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800';
 }
 </script>
 
@@ -52,8 +73,7 @@ async function logout() {
                     :key="item.path"
                     :to="item.path"
                     :data-testid="`admin-desktop-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`"
-                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                    active-class="bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-500"
+                    :class="desktopSidebarLinkClass(item.path)"
                 >
                     <i :class="['pi', item.icon]" aria-hidden="true"></i>
                     {{ item.label }}
@@ -86,7 +106,7 @@ async function logout() {
                     </div>
                 </div>
                 <nav class="flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label="Admin navigation" data-testid="admin-mobile-navbar">
-                    <RouterLink v-for="item in navigation" :key="item.path" :to="item.path" :data-testid="`admin-mobile-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`" class="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" active-class="bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-500">
+                    <RouterLink v-for="item in navigation" :key="item.path" :to="item.path" :data-testid="`admin-mobile-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`" :class="mobileSidebarLinkClass(item.path)">
                         <i :class="['pi', item.icon]" aria-hidden="true"></i>
                         {{ item.label }}
                     </RouterLink>

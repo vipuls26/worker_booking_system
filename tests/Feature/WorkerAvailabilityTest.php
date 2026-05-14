@@ -157,6 +157,22 @@ class WorkerAvailabilityTest extends TestCase
         }
     }
 
+    public function test_worker_availability_rejects_past_dates(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-12 11:33:00');
+
+        try {
+            Sanctum::actingAs($this->workerUser());
+
+            $this->getJson('/api/worker/availability?date=2026-05-11&slot_minutes=60')
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('date')
+                ->assertJsonPath('errors.date.0', 'The date must be on or after today.');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
     public function test_customer_cannot_access_worker_availability_management(): void
     {
         Sanctum::actingAs($this->customerUser());

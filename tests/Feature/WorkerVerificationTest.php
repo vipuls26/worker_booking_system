@@ -90,6 +90,38 @@ class WorkerVerificationTest extends TestCase
     }
 
     /**
+     * Proves admins can search the verification queue by worker identity without losing the pending-first ordering.
+     */
+    public function test_admin_verification_list_supports_search(): void
+    {
+        $this->seed(RoleSeeder::class);
+        Sanctum::actingAs($this->adminUser());
+
+        $matchingWorker = User::factory()
+            ->for(Role::where('slug', 'worker')->firstOrFail())
+            ->create([
+                'name' => 'Searchable Worker',
+                'email' => 'searchable.worker@example.com',
+            ]);
+
+        $otherWorker = User::factory()
+            ->for(Role::where('slug', 'worker')->firstOrFail())
+            ->create([
+                'name' => 'Different Worker',
+                'email' => 'different.worker@example.com',
+            ]);
+
+        $matchingVerification = $this->approvedVerificationForWorker($matchingWorker);
+        $this->approvedVerificationForWorker($otherWorker);
+
+        $this->getJson('/api/admin/worker-verifications?search=searchable')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.verifications')
+            ->assertJsonPath('data.verifications.0.id', $matchingVerification->id)
+            ->assertJsonPath('data.verifications.0.worker.email', 'searchable.worker@example.com');
+    }
+
+    /**
      * Proves removing worker verification blocks new marketplace use but keeps current bookings active.
      */
     public function test_removing_worker_verification_keeps_active_bookings_and_notifies_customers(): void

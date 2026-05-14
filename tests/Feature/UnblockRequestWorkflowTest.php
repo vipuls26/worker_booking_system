@@ -166,6 +166,42 @@ class UnblockRequestWorkflowTest extends TestCase
     }
 
     /**
+     * Proves admins can narrow unblock appeals by both search text and workflow status.
+     */
+    public function test_admin_can_filter_unblock_requests_by_search_and_status(): void
+    {
+        [$admin, $blockedUser] = $this->reviewUsers(User::STATUS_FULLY_BLOCKED);
+        $otherBlockedUser = User::factory()
+            ->for(Role::where('slug', 'customer')->firstOrFail())
+            ->create([
+                'name' => 'Another Customer',
+                'email' => 'another.customer@example.com',
+                'account_status' => User::STATUS_FULLY_BLOCKED,
+                'is_blocked' => true,
+            ]);
+
+        $matchingRequest = UnblockRequest::factory()->create([
+            'user_id' => $blockedUser->id,
+            'reason' => 'Please restore my account after payment review.',
+            'status' => UnblockRequest::STATUS_PENDING,
+        ]);
+
+        UnblockRequest::factory()->create([
+            'user_id' => $otherBlockedUser->id,
+            'reason' => 'I need help with another issue.',
+            'status' => UnblockRequest::STATUS_REJECTED,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/unblock-requests?status=pending&search=payment')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.unblock_requests')
+            ->assertJsonPath('data.unblock_requests.0.id', $matchingRequest->id)
+            ->assertJsonPath('data.unblock_requests.0.user.email', $blockedUser->email);
+    }
+
+    /**
      * Create the admin and blocked customer used by unblock review tests.
      *
      * @return array{User, User}

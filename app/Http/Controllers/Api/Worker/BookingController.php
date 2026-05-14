@@ -26,6 +26,7 @@ class BookingController extends Controller
         $bookings = $this->bookings->workerBookings(
             $request->user(),
             $request->string('status')->toString() ?: null,
+            $request->string('search')->trim()->toString() ?: null,
             $request->integer('per_page', 10),
         );
 
@@ -59,6 +60,7 @@ class BookingController extends Controller
         $bookingRequests = $this->bookings->workerRequests(
             $request->user(),
             $request->string('status')->toString() ?: null,
+            $request->string('search')->trim()->toString() ?: null,
             $request->integer('per_page', 10),
         );
 

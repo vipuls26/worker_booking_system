@@ -14,6 +14,7 @@ class ReviewIndexRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
+            'search' => ['nullable', 'string', 'max:255'],
             'rating' => ['nullable', 'integer', 'min:1', 'max:5'],
             'sort' => ['nullable', Rule::in(['latest', 'rating_high', 'rating_low'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],

@@ -17,9 +17,24 @@ class UnblockRequestManagementService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        $search = $request->string('search')->trim()->toString();
+
         // Admins need unblock requests with user and reviewer context for account safety decisions.
         return UnblockRequest::query()
             ->with(['user.role', 'reviewer.role'])
+            ->when($search !== '', function ($query) use ($search): void {
+                // Search by account identity and appeal notes so admins can reopen the right case quickly.
+                $query->where(function ($query) use ($search): void {
+                    $query
+                        ->where('reason', 'like', "%{$search}%")
+                        ->orWhere('admin_note', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($userQuery) use ($search): void {
+                            $userQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->latest()
             ->paginate($request->integer('per_page', 15));

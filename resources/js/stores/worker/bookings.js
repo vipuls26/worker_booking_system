@@ -9,6 +9,7 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
         loading: false,
         saving: false,
         filters: {
+            search: '',
             status: '',
             per_page: 10,
         },
@@ -19,7 +20,12 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
             this.loading = true;
 
             try {
-                const response = await bookingsApi.listBookings({ ...this.filters, page });
+                const response = await bookingsApi.listBookings({
+                    search: this.filters.search || undefined,
+                    status: this.filters.status || undefined,
+                    per_page: this.filters.per_page,
+                    page,
+                });
                 this.bookings = response.data.data.bookings;
                 this.meta = response.data.data.meta;
 

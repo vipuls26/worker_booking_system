@@ -98,11 +98,30 @@ class ReviewService
     {
         abort_unless($worker->hasRole('worker'), 404);
 
+        $search = $request->string('search')->trim()->toString();
+
         // Worker profile pages show only customer-to-worker reviews for that worker.
         return Review::query()
             ->with(['customer.role', 'booking.service'])
             ->where('worker_id', $worker->id)
             ->where('type', Review::TypeCustomerToWorker)
+            ->when($search !== '', function ($query) use ($search): void {
+                // Search by reviewer, booking service, or written feedback so workers can find specific reputation notes.
+                $query->where(function ($query) use ($search): void {
+                    $query
+                        ->where('review', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function ($customerQuery) use ($search): void {
+                            $customerQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('booking.service', function ($serviceQuery) use ($search): void {
+                            $serviceQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('slug', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->when($request->filled('rating'), fn ($query) => $query->where('rating', $request->integer('rating')))
             ->when(
                 $request->string('sort')->toString() === 'rating_high',

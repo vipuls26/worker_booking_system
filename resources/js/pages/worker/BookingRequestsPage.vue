@@ -1,17 +1,22 @@
 <script setup>
-import { onMounted, reactive } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../../components/common/AppButton.vue';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerBookingRequestsStore } from '../../stores/worker/bookingRequests';
 
+const route = useRoute();
+const router = useRouter();
 const bookingRequestsStore = useWorkerBookingRequestsStore();
 const cancellationReasons = reactive({});
+const filtersReady = ref(false);
 
 const statusOptions = [
     { label: 'All requests', value: '' },
@@ -40,8 +45,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => bookingRequestsStore.filters.status,
-    () => load(),
+    () => [bookingRequestsStore.filters.search, bookingRequestsStore.filters.status],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 async function respond(bookingRequest, status) {
@@ -67,14 +79,39 @@ async function respond(bookingRequest, status) {
     }
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        bookingRequestsStore.filters.search = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        bookingRequestsStore.filters.status = String(route.query.status);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(bookingRequestsStore.filters.search ? { search: bookingRequestsStore.filters.search } : {}),
+            ...(bookingRequestsStore.filters.status ? { status: bookingRequestsStore.filters.status } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
     <DashboardLayout title="Booking Requests">
         <div class="space-y-5" data-testid="worker-booking-requests-page">
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="max-w-sm">
+                <div class="grid gap-3 md:grid-cols-[1fr_220px]">
+                    <SearchFilter v-model="bookingRequestsStore.filters.search" placeholder="Search customer, service, address, or issue" @search="load()" />
                     <FormSelect id="worker_request_status" v-model="bookingRequestsStore.filters.status" label="Status" :options="statusOptions" option-label="label" option-value="value" />
                 </div>
             </section>

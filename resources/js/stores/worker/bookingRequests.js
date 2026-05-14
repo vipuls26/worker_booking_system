@@ -9,6 +9,7 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
         loading: false,
         saving: false,
         filters: {
+            search: '',
             status: '',
             per_page: 10,
         },
@@ -19,7 +20,12 @@ export const useWorkerBookingRequestsStore = defineStore('workerBookingRequests'
             this.loading = true;
 
             try {
-                const response = await bookingRequestsApi.listBookingRequests({ ...this.filters, page });
+                const response = await bookingRequestsApi.listBookingRequests({
+                    search: this.filters.search || undefined,
+                    status: this.filters.status || undefined,
+                    per_page: this.filters.per_page,
+                    page,
+                });
                 this.bookingRequests = response.data.data.worker_requests;
                 this.meta = response.data.data.meta;
 

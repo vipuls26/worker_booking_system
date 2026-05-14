@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminWorkerVerifications, approveWorkerVerification, rejectWorkerVerification, requestWorkerVerificationResubmission } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -8,13 +9,18 @@ import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const verifications = ref([]);
 const meta = ref({});
+const search = ref('');
 const status = ref('');
+const filtersReady = ref(false);
 const rejecting = ref(null);
 const resubmitting = ref(null);
 const rejectionReason = ref('');
@@ -46,7 +52,11 @@ function activeBookingWarning(item) {
 async function load(page = 1) {
     loading.value = true;
     try {
-        const response = await adminWorkerVerifications({ status: status.value, page });
+        const response = await adminWorkerVerifications({
+            search: search.value || undefined,
+            status: status.value || undefined,
+            page,
+        });
         verifications.value = response.data.data.verifications;
         meta.value = response.data.data.meta;
     } catch {
@@ -57,8 +67,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => status.value,
-    () => load(),
+    () => [search.value, status.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 async function approve(item) {
@@ -83,13 +100,40 @@ async function requestResubmission() {
     await load();
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        status.value = String(route.query.status);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(status.value ? { status: status.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
     <AdminLayout title="Worker Verification">
         <div class="space-y-4" data-testid="admin-worker-verifications-page">
-            <div class="max-w-xs"><FormSelect id="verification_status" v-model="status" label="Status" :options="statusOptions" /></div>
+            <div class="grid gap-3 md:grid-cols-[1fr_220px]">
+                <SearchFilter v-model="search" placeholder="Search worker, email, or review note" @search="load()" />
+                <FormSelect id="verification_status" v-model="status" label="Status" :options="statusOptions" />
+            </div>
             <AdminTable :columns="[{ key: 'worker', label: 'Worker' }, { key: 'experience', label: 'Experience' }, { key: 'status', label: 'Status' }]" :loading="loading" :has-records="verifications.length > 0">
                 <tr v-for="item in verifications" :key="item.id" :data-testid="`admin-worker-verification-row-${item.id}`">
                     <td class="px-4 py-3">

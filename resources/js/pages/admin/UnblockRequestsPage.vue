@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUnblockRequests, approveUnblockRequest, rejectUnblockRequest } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -8,13 +9,18 @@ import AppButton from '../../components/common/AppButton.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const requests = ref([]);
 const meta = ref({});
+const search = ref('');
 const status = ref('pending');
+const filtersReady = ref(false);
 const reviewing = ref(null);
 const action = ref('');
 const adminNote = ref('');
@@ -35,7 +41,11 @@ async function load(page = 1) {
     loading.value = true;
 
     try {
-        const response = await adminUnblockRequests({ status: status.value, page });
+        const response = await adminUnblockRequests({
+            search: search.value || undefined,
+            status: status.value || undefined,
+            page,
+        });
         requests.value = response.data.data.unblock_requests;
         meta.value = response.data.data.meta;
     } catch {
@@ -46,8 +56,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => status.value,
-    () => load(),
+    () => [search.value, status.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 function openReview(item, nextAction) {
@@ -82,13 +99,38 @@ async function submitReview() {
     }
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        status.value = String(route.query.status);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(status.value ? { status: status.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
     <AdminLayout title="Unblock Requests">
         <div class="space-y-4" data-testid="admin-unblock-requests-page">
-            <div class="max-w-xs">
+            <div class="grid gap-3 md:grid-cols-[1fr_220px]">
+                <SearchFilter v-model="search" placeholder="Search user, email, or appeal note" @search="load()" />
                 <FormSelect id="unblock_status" v-model="status" label="Status" :options="statusOptions" data-testid="admin-unblock-status-filter" />
             </div>
 

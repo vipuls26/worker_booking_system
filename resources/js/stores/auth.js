@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
 import * as authApi from '../api/auth';
+import {
+    clearStoredAuthSession,
+    getStoredAuthToken,
+    getStoredAuthUser,
+    setStoredAuthSession,
+    setStoredAuthUser,
+} from '../lib/authStorage';
 
 const dashboardByRole = {
     admin: '/admin/dashboard',
@@ -9,8 +16,8 @@ const dashboardByRole = {
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        user: JSON.parse(localStorage.getItem('auth_user') || 'null'),
-        token: localStorage.getItem('auth_token'),
+        user: getStoredAuthUser(),
+        token: getStoredAuthToken(),
         isBootstrapped: false,
     }),
 
@@ -32,15 +39,13 @@ export const useAuthStore = defineStore('auth', {
         setSession({ token, user }) {
             this.token = token;
             this.user = user;
-            localStorage.setItem('auth_token', token);
-            localStorage.setItem('auth_user', JSON.stringify(user));
+            setStoredAuthSession(token, user);
         },
 
         clearSession() {
             this.token = null;
             this.user = null;
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('auth_user');
+            clearStoredAuthSession();
         },
 
         async bootstrap() {
@@ -60,7 +65,7 @@ export const useAuthStore = defineStore('auth', {
 
         setUser(user) {
             this.user = user;
-            localStorage.setItem('auth_user', JSON.stringify(user));
+            setStoredAuthUser(user);
         },
 
         async refreshUser() {

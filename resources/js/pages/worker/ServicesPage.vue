@@ -38,6 +38,7 @@ async function silentRefresh() {
 
 useDebouncedWatch(
     () => [
+        workerServicesStore.filters.search,
         workerServicesStore.filters.pricing_type,
         workerServicesStore.filters.status,
         workerServicesStore.filters.approval_status,

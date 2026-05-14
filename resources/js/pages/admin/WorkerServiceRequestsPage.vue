@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminWorkerServiceRequests, approveWorkerServiceRequest, rejectWorkerServiceRequest } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -12,11 +13,14 @@ import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const workerServices = ref([]);
 const meta = ref({});
 const search = ref('');
 const status = ref('pending');
+const filtersReady = ref(false);
 const rejecting = ref(null);
 const rejectionReason = ref('');
 const processingId = ref(null);
@@ -48,8 +52,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => status.value,
-    () => load(),
+    () => [search.value, status.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 async function approve(workerService) {
@@ -93,7 +104,31 @@ function syncWorkerService(updatedWorkerService) {
     ));
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        status.value = String(route.query.status);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(status.value ? { status: status.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>

@@ -1,10 +1,11 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { getStoredAuthToken } from './authStorage';
 
 let echoInstance = null;
 
 function currentAuthToken() {
-    return localStorage.getItem('auth_token');
+    return getStoredAuthToken();
 }
 
 export function getEcho() {
@@ -30,6 +31,7 @@ export function getEcho() {
         auth: {
             headers: {
                 Accept: 'application/json',
+                'X-Client-Platform': 'web-spa',
             },
         },
     });

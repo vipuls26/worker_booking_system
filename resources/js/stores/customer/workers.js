@@ -14,6 +14,7 @@ export const useCustomerWorkersStore = defineStore('customerWorkers', {
         detailLoading: false,
         availabilityLoading: false,
         filters: {
+            search: '',
             service_id: '',
             min_rating: '',
             max_price: '',

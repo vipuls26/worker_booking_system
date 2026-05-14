@@ -35,6 +35,8 @@ const revenueSummary = computed(() => [
     { label: 'Worker earnings', value: stats.value.worker_payouts || 0, icon: 'pi-briefcase' },
 ]);
 
+const cardTones = ['blue', 'emerald', 'amber', 'violet'];
+
 async function loadDashboard(showErrorToast = true) {
     try {
         const response = await adminDashboard();
@@ -68,12 +70,20 @@ watch(
 
         <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
             <div v-if="!loading" class="grid gap-4 md:grid-cols-4">
-                <DashboardCard v-for="card in stats.cards" :key="card.label" :eyebrow="card.label" :title="card.label.toLowerCase().includes('revenue') ? `₹${card.value}` : String(card.value)" description="Platform analytics" />
+                <DashboardCard
+                    v-for="(card, index) in stats.cards"
+                    :key="card.label"
+                    :eyebrow="card.label"
+                    :title="card.label.toLowerCase().includes('revenue') ? `₹${card.value}` : String(card.value)"
+                    description="Platform analytics"
+                    :icon="['pi-users', 'pi-briefcase', 'pi-calendar', 'pi-wallet'][index] || 'pi-chart-bar'"
+                    :tone="cardTones[index % cardTones.length]"
+                />
             </div>
         </Transition>
 
         <Transition appear enter-active-class="fade-up-enter-active delay-75" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
-            <section v-if="!loading" class="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <section v-if="!loading" class="app-surface app-surface-brand mt-6 p-5">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Money Flow</p>

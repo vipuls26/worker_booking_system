@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getStoredAuthToken } from '../lib/authStorage';
 
 const http = axios.create({
     baseURL: '/api',
@@ -9,11 +10,13 @@ const http = axios.create({
 });
 
 http.interceptors.request.use((config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = getStoredAuthToken();
 
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
+
+    config.headers['X-Client-Platform'] = 'web-spa';
 
     if (config.data instanceof FormData) {
         delete config.headers['Content-Type'];

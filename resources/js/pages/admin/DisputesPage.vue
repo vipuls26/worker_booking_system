@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminDispute, adminDisputes, updateAdminDispute } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -12,12 +13,15 @@ import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const disputes = ref([]);
 const meta = ref({});
 const search = ref('');
 const status = ref('');
 const category = ref('');
+const filtersReady = ref(false);
 const reviewing = ref(null);
 const viewing = ref(null);
 const nextStatus = ref('under_review');
@@ -76,8 +80,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => [status.value, category.value],
-    () => load(),
+    () => [search.value, status.value, category.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 function openReview(dispute, statusValue = 'under_review') {
@@ -139,7 +150,36 @@ function userLabel(user) {
     return user?.name || user?.email || 'Unknown user';
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        status.value = String(route.query.status);
+    }
+
+    if (route.query.category !== undefined) {
+        category.value = String(route.query.category);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(status.value ? { status: status.value } : {}),
+            ...(category.value ? { category: category.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>

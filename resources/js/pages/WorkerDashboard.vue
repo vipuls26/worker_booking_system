@@ -37,6 +37,8 @@ const earningsSummary = computed(() => [
     { label: 'Completed jobs', value: analytics.value.completed_bookings || 0, icon: 'pi-check-circle' },
 ]);
 
+const cardTones = ['blue', 'emerald', 'amber', 'violet'];
+
 const serviceColumns = [
     { key: 'name', label: 'Service' },
     { key: 'bookings_count', label: 'Bookings' },
@@ -115,11 +117,13 @@ onMounted(async () => {
         <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
             <div v-if="!loading" class="grid gap-4 md:grid-cols-4">
                 <DashboardCard
-                    v-for="card in analytics.cards"
+                    v-for="(card, index) in analytics.cards"
                     :key="card.label"
                     :eyebrow="card.label"
                     :title="['Paid by customers', 'Available for payout'].includes(card.label) ? `₹${card.value}` : String(card.value)"
                     description="Worker analytics"
+                    :icon="['pi-wallet', 'pi-clock', 'pi-calendar', 'pi-star'][index] || 'pi-chart-bar'"
+                    :tone="cardTones[index % cardTones.length]"
                 />
             </div>
         </Transition>
@@ -127,7 +131,7 @@ onMounted(async () => {
         <SkeletonCard v-if="loading" class="mt-6" :lines="4" :avatar="false" />
 
         <Transition appear enter-active-class="fade-up-enter-active delay-75" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
-            <section v-if="!loading" class="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
+            <section v-if="!loading" class="app-surface app-surface-success mt-6 p-5">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Earnings</p>
@@ -163,7 +167,7 @@ onMounted(async () => {
         </Transition>
 
         <Transition appear enter-active-class="fade-up-enter-active delay-100" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
-            <AppPanel v-if="!loading" class="mt-6">
+            <AppPanel v-if="!loading" tone="brand" class="mt-6">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Availability</p>

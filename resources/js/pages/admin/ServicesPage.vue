@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import ServiceFormModal from '../../components/admin/ServiceFormModal.vue';
 import ServicesTable from '../../components/admin/ServicesTable.vue';
@@ -12,6 +13,8 @@ import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 import { useAdminServicesStore } from '../../stores/admin/services';
 
+const route = useRoute();
+const router = useRouter();
 const servicesStore = useAdminServicesStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
 
@@ -20,6 +23,7 @@ const modalOpen = ref(false);
 const editing = ref(null);
 const deleting = ref(null);
 const forceDeleting = ref(false);
+const filtersReady = ref(false);
 
 async function load(page = 1) {
     try {
@@ -30,8 +34,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => servicesStore.filters.status,
-    () => load(),
+    () => [servicesStore.filters.search, servicesStore.filters.status],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 function openCreateModal() {
@@ -113,7 +124,31 @@ function cancelDelete() {
     forceDeleting.value = false;
 }
 
-onMounted(() => load());
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        servicesStore.filters.search = String(route.query.search);
+    }
+
+    if (route.query.status !== undefined) {
+        servicesStore.filters.status = String(route.query.status);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(servicesStore.filters.search ? { search: servicesStore.filters.search } : {}),
+            ...(servicesStore.filters.status && servicesStore.filters.status !== 'all' ? { status: servicesStore.filters.status } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>

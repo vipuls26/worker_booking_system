@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
@@ -11,11 +12,14 @@ import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const users = ref([]);
 const meta = ref({});
 const search = ref('');
 const role = ref('');
+const filtersReady = ref(false);
 const deleting = ref(null);
 const blocking = ref(null);
 const blockType = ref('unblock');
@@ -82,8 +86,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => role.value,
-    () => load(),
+    () => [search.value, role.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 function openBlockDialog(user, nextBlockType = 'unblock') {
@@ -139,7 +150,31 @@ async function confirmDelete() {
     }
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.role !== undefined) {
+        role.value = String(route.query.role);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(role.value ? { role: role.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>

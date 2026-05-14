@@ -744,6 +744,44 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('data.worker_requests.0.status', ServiceRequestWorker::STATUS_PENDING);
     }
 
+    public function test_worker_booking_request_list_supports_search(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $matchingServiceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'address' => '42 Market Road',
+            'description' => 'Kitchen sink leaking badly.',
+        ]);
+
+        $matchingWorkerRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $matchingServiceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        $otherServiceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'address' => '8 Lake View',
+            'description' => 'Garden cleanup request.',
+        ]);
+
+        ServiceRequestWorker::factory()->create([
+            'service_request_id' => $otherServiceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/booking-requests?search=Kitchen')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.worker_requests')
+            ->assertJsonPath('data.worker_requests.0.id', $matchingWorkerRequest->id);
+    }
+
     public function test_customer_can_reschedule_request_that_is_awaiting_reschedule(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();
@@ -1023,6 +1061,82 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('data.summary.average', 4.0)
             ->assertJsonPath('data.summary.count', 1)
             ->assertJsonPath('data.reviews.0.rating', 4);
+    }
+
+    public function test_worker_booking_list_supports_search(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $matchingBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+            'address' => '21 River Street',
+            'issue_description' => 'Bathroom tap replacement needed.',
+        ]);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+            'address' => '11 Hill Road',
+            'issue_description' => 'Ceiling fan service.',
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/bookings?search=Bathroom')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.bookings')
+            ->assertJsonPath('data.bookings.0.id', $matchingBooking->id);
+    }
+
+    public function test_worker_reviews_support_search_and_rating_filters(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $otherCustomer = User::factory()->for(Role::where('slug', 'customer')->firstOrFail())->create([
+            'name' => 'Second Customer',
+        ]);
+
+        $matchingBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Review::factory()->create([
+            'booking_id' => $matchingBooking->id,
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'rating' => 5,
+            'review' => 'Excellent plumbing cleanup.',
+        ]);
+
+        $otherBooking = Booking::factory()->create([
+            'customer_id' => $otherCustomer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Review::factory()->create([
+            'booking_id' => $otherBooking->id,
+            'customer_id' => $otherCustomer->id,
+            'worker_id' => $worker->id,
+            'rating' => 3,
+            'review' => 'Average overall support.',
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/reviews?search=plumbing&rating=5')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.reviews')
+            ->assertJsonPath('data.reviews.0.booking_id', $matchingBooking->id)
+            ->assertJsonPath('data.reviews.0.rating', 5);
     }
 
     public function test_customer_can_select_final_worker_from_multi_worker_request(): void

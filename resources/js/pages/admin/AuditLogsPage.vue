@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminAuditLogs, adminBookingAuditLogs, adminUserAuditLogs } from '../../api/admin';
 import PaginationControls from '../../components/admin/PaginationControls.vue';
@@ -14,8 +14,10 @@ import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
 const route = useRoute();
+const router = useRouter();
 const auditLogs = ref([]);
 const meta = ref({});
+const filtersReady = ref(false);
 const filters = ref({
     search: '',
     action: '',
@@ -163,6 +165,7 @@ function resetFilters() {
         date_to: '',
     };
 
+    syncFiltersToRoute();
     load();
 }
 
@@ -179,11 +182,47 @@ function prettyMetadata(metadata) {
 }
 
 useDebouncedWatch(
-    () => [filters.value.action, filters.value.actor_role, filters.value.date_from, filters.value.date_to],
-    () => load(),
+    () => [filters.value.search, filters.value.action, filters.value.actor_role, filters.value.date_from, filters.value.date_to],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
-onMounted(load);
+function applyRouteFilters() {
+    const allowedFilters = ['search', 'action', 'actor_role', 'date_from', 'date_to'];
+
+    allowedFilters.forEach((key) => {
+        if (route.query[key] !== undefined) {
+            filters.value[key] = String(route.query[key]);
+        }
+    });
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(route.query.user ? { user: route.query.user } : {}),
+            ...(route.query.booking ? { booking: route.query.booking } : {}),
+            ...(filters.value.search ? { search: filters.value.search } : {}),
+            ...(filters.value.action ? { action: filters.value.action } : {}),
+            ...(filters.value.actor_role ? { actor_role: filters.value.actor_role } : {}),
+            ...(filters.value.date_from ? { date_from: filters.value.date_from } : {}),
+            ...(filters.value.date_to ? { date_to: filters.value.date_to } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>

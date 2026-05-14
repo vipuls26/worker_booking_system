@@ -135,17 +135,35 @@ class BookingService
             ->paginate($perPage);
     }
 
-    public function workerBookings(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
+    public function workerBookings(User $worker, ?string $status, ?string $search, int $perPage = 10): LengthAwarePaginator
     {
         // Workers need their assigned bookings with related customer, service, activity, and review context.
         return $worker->workerBookings()
             ->with(['customer.role', 'selectedWorker.role', 'service', 'activities.actor.role', 'review.customer.role', 'workerReview.worker.role'])
             ->when($status, fn ($query) => $query->where('status', $status))
+            ->when($search, function ($query, string $search): void {
+                // Search by customer, service, address, or issue note so workers can find one job quickly.
+                $query->where(function ($query) use ($search): void {
+                    $query
+                        ->where('address', 'like', "%{$search}%")
+                        ->orWhere('issue_description', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function ($customerQuery) use ($search): void {
+                            $customerQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('service', function ($serviceQuery) use ($search): void {
+                            $serviceQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('slug', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->latest()
             ->paginate($perPage);
     }
 
-    public function workerRequests(User $worker, ?string $status, int $perPage = 10): LengthAwarePaginator
+    public function workerRequests(User $worker, ?string $status, ?string $search, int $perPage = 10): LengthAwarePaginator
     {
         // Workers respond from their own request queue, so never expose other workers' invitations.
         return ServiceRequestWorker::query()
@@ -156,6 +174,24 @@ class BookingService
                 fn ($query) => $query->where('status', $status),
                 fn ($query) => $query->actionableForWorker(),
             )
+            ->when($search, function ($query, string $search): void {
+                // Search by customer, service, address, or job note so workers can review invitations faster.
+                $query->whereHas('serviceRequest', function ($serviceRequestQuery) use ($search): void {
+                    $serviceRequestQuery
+                        ->where('address', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function ($customerQuery) use ($search): void {
+                            $customerQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('service', function ($serviceQuery) use ($search): void {
+                            $serviceQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('slug', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->latest()
             ->paginate($perPage);
     }

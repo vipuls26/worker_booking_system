@@ -16,6 +16,7 @@ use App\Models\ServiceRequest;
 use App\Services\Booking\BookAgainService;
 use App\Services\Booking\BookingService;
 use App\Services\Payment\PaymentService;
+use App\Support\Api\IdempotencyResponseCache;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -26,6 +27,7 @@ class BookingController extends Controller
         private readonly BookingService $bookings,
         private readonly PaymentService $payments,
         private readonly BookAgainService $bookAgain,
+        private readonly IdempotencyResponseCache $idempotency,
     ) {}
 
     public function index(IndexCustomerBookingsRequest $request): JsonResponse
@@ -52,13 +54,15 @@ class BookingController extends Controller
         // Customers must pass policy and schedule validation before workers are contacted.
         Gate::authorize('create', ServiceRequest::class);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking request sent',
-            'data' => [
-                'booking' => new ServiceRequestResource($this->bookings->create($request->user(), $request->validated())),
-            ],
-        ], 201);
+        return $this->idempotency->run($request, 'customer-booking-create', function () use ($request): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking request sent',
+                'data' => [
+                    'booking' => new ServiceRequestResource($this->bookings->create($request->user(), $request->validated())),
+                ],
+            ], 201);
+        });
     }
 
     public function show(ServiceRequest $booking): JsonResponse
@@ -92,15 +96,17 @@ class BookingController extends Controller
         // Customer selection turns an accepted worker response into the final booking.
         Gate::authorize('selectWorker', $booking);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Worker selected successfully',
-            'data' => [
-                'booking' => new ServiceRequestResource(
-                    $this->bookings->selectFinalWorker($booking, $request->user(), $request->integer('worker_request_id')),
-                ),
-            ],
-        ]);
+        return $this->idempotency->run($request, 'customer-booking-select-worker', function () use ($request, $booking): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Worker selected successfully',
+                'data' => [
+                    'booking' => new ServiceRequestResource(
+                        $this->bookings->selectFinalWorker($booking, $request->user(), $request->integer('worker_request_id')),
+                    ),
+                ],
+            ]);
+        });
     }
 
     public function cancel(CancelOwnBookingRequest $request, ServiceRequest $booking): JsonResponse
@@ -108,15 +114,17 @@ class BookingController extends Controller
         // Customers can cancel only open service requests before final worker selection.
         Gate::authorize('cancel', $booking);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking cancelled',
-            'data' => [
-                'booking' => new ServiceRequestResource(
-                    $this->bookings->cancelServiceRequest($booking, $request->user(), $request->string('cancelled_reason')->toString() ?: null),
-                ),
-            ],
-        ]);
+        return $this->idempotency->run($request, 'customer-booking-cancel', function () use ($request, $booking): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking cancelled',
+                'data' => [
+                    'booking' => new ServiceRequestResource(
+                        $this->bookings->cancelServiceRequest($booking, $request->user(), $request->string('cancelled_reason')->toString() ?: null),
+                    ),
+                ],
+            ]);
+        });
     }
 
     public function reschedule(RescheduleBookingRequest $request, ServiceRequest $booking): JsonResponse
@@ -124,15 +132,17 @@ class BookingController extends Controller
         // Only the customer who owns the request can move it to a new time slot.
         Gate::authorize('reschedule', $booking);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking request rescheduled',
-            'data' => [
-                'booking' => new ServiceRequestResource(
-                    $this->bookings->rescheduleServiceRequest($booking, $request->user(), $request->validated()),
-                ),
-            ],
-        ]);
+        return $this->idempotency->run($request, 'customer-booking-reschedule', function () use ($request, $booking): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking request rescheduled',
+                'data' => [
+                    'booking' => new ServiceRequestResource(
+                        $this->bookings->rescheduleServiceRequest($booking, $request->user(), $request->validated()),
+                    ),
+                ],
+            ]);
+        });
     }
 
     public function pay(PayBookingRequest $request, ServiceRequest $booking): JsonResponse
@@ -140,15 +150,17 @@ class BookingController extends Controller
         // Payment requires access to the service request and a finalized booking behind it.
         Gate::authorize('view', $booking);
 
-        $payment = $this->payments->payForServiceRequest($booking->load('booking'), $request->user(), $request->validated());
+        return $this->idempotency->run($request, 'customer-booking-pay', function () use ($request, $booking): JsonResponse {
+            $payment = $this->payments->payForServiceRequest($booking->load('booking'), $request->user(), $request->validated());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Payment successful',
-            'data' => [
-                'payment' => new PaymentResource($payment),
-                'booking' => new ServiceRequestResource($booking->refresh()->load($this->bookings->serviceRequestRelations())),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment successful',
+                'data' => [
+                    'payment' => new PaymentResource($payment),
+                    'booking' => new ServiceRequestResource($booking->refresh()->load($this->bookings->serviceRequestRelations())),
+                ],
+            ]);
+        });
     }
 }

@@ -11,7 +11,7 @@ const steps = [
 
 <template>
     <DashboardLayout title="Customer Dashboard">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="customer-dashboard-page">
             <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
                 <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-slate-900 dark:shadow-none">
                     <div class="grid gap-0 lg:grid-cols-[1fr_320px]">
@@ -25,7 +25,7 @@ const steps = [
                             </p>
 
                             <div class="mt-6 flex flex-col gap-2 sm:flex-row">
-                                <RouterLink to="/customer/workers" class="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
+                                <RouterLink to="/customer/workers" data-testid="find-workers-link" class="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
                                     <i class="pi pi-search" aria-hidden="true"></i>
                                     Find matching workers
                                 </RouterLink>

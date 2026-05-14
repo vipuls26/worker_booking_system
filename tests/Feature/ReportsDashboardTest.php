@@ -7,7 +7,10 @@ use App\Models\Payment;
 use App\Models\Review;
 use App\Models\Role;
 use App\Models\Service;
+use App\Models\ServiceRequest;
+use App\Models\ServiceRequestWorker;
 use App\Models\User;
+use App\Models\WorkerSchedule;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -89,6 +92,28 @@ class ReportsDashboardTest extends TestCase
             'rating' => 5,
         ]);
 
+        WorkerSchedule::factory()->create([
+            'worker_id' => $worker->id,
+            'day_of_week' => 1,
+            'start_time' => '09:00',
+            'end_time' => '17:00',
+            'is_off_day' => false,
+        ]);
+
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => now()->addDay()->toDateString(),
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+        ]);
+
+        ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
         Sanctum::actingAs($worker);
 
         $this->getJson('/api/worker/dashboard')
@@ -96,6 +121,8 @@ class ReportsDashboardTest extends TestCase
             ->assertJsonPath('data.analytics.earnings', 810)
             ->assertJsonPath('data.analytics.completed_bookings', 1)
             ->assertJsonPath('data.analytics.average_rating', 5.0)
+            ->assertJsonPath('data.analytics.pending_request_count', 1)
+            ->assertJsonPath('data.analytics.upcoming_bookings.0.id', $booking->id)
             ->assertJsonStructure([
                 'data' => [
                     'analytics' => [
@@ -104,6 +131,9 @@ class ReportsDashboardTest extends TestCase
                         'booking_statuses',
                         'top_services',
                         'recent_reviews',
+                        'availability',
+                        'pending_request_count',
+                        'upcoming_bookings',
                     ],
                 ],
             ]);

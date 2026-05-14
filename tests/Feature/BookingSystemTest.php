@@ -226,6 +226,126 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('data.booking.end_time', '11:15');
     }
 
+    public function test_customer_cannot_create_duplicate_active_request_for_same_slot(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $this->addMatchingWorkerForService($service);
+
+        Sanctum::actingAs($customer);
+
+        $payload = [
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need a technician.',
+        ];
+
+        $this->postJson('/api/customer/bookings', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_OPEN);
+
+        $this->postJson('/api/customer/bookings', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_date')
+            ->assertJsonPath('errors.booking_date.0', 'You already have an active booking request for this slot.');
+
+        $this->assertDatabaseCount('service_requests', 1);
+    }
+
+    public function test_customer_booking_create_reuses_first_response_for_same_idempotency_key(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $this->addMatchingWorkerForService($service);
+
+        Sanctum::actingAs($customer);
+
+        $payload = [
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need a technician.',
+        ];
+
+        $headers = ['X-Idempotency-Key' => 'customer-booking-create-test'];
+
+        $firstResponse = $this->withHeaders($headers)
+            ->postJson('/api/customer/bookings', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_OPEN);
+
+        $firstBookingId = $firstResponse->json('data.booking.id');
+
+        $this->withHeaders($headers)
+            ->postJson('/api/customer/bookings', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.booking.id', $firstBookingId);
+
+        $this->assertDatabaseCount('service_requests', 1);
+    }
+
+    public function test_customer_worker_selection_reuses_first_response_for_same_idempotency_key(): void
+    {
+        [$customer, $firstWorker, $service] = $this->bookingActors();
+        $secondWorker = $this->addMatchingWorkerForService($service);
+
+        Sanctum::actingAs($customer);
+
+        $serviceRequestId = $this->postJson('/api/customer/bookings', [
+            'service_id' => $service->id,
+            'booking_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'issue_description' => 'Need a technician.',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_OPEN)
+            ->json('data.booking.id');
+
+        Sanctum::actingAs($secondWorker);
+
+        $workerRequest = ServiceRequestWorker::query()
+            ->where('service_request_id', $serviceRequestId)
+            ->where('worker_id', $secondWorker->id)
+            ->firstOrFail();
+
+        $this->patchJson("/api/worker/booking-requests/{$workerRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_ACCEPTED,
+        ])->assertOk();
+
+        Sanctum::actingAs($customer);
+
+        $headers = ['X-Idempotency-Key' => 'customer-booking-selection-test'];
+
+        $firstResponse = $this->withHeaders($headers)
+            ->patchJson("/api/customer/bookings/{$serviceRequestId}/select-worker", [
+                'worker_request_id' => $workerRequest->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.booking.status', ServiceRequest::STATUS_WORKER_SELECTED)
+            ->assertJsonPath('data.booking.worker.id', $secondWorker->id);
+
+        $bookingId = $firstResponse->json('data.booking.booking_id');
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/customer/bookings/{$serviceRequestId}/select-worker", [
+                'worker_request_id' => $workerRequest->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.booking.booking_id', $bookingId);
+
+        $this->assertDatabaseCount('bookings', 1);
+        $this->assertDatabaseHas('service_request_workers', [
+            'service_request_id' => $serviceRequestId,
+            'worker_id' => $firstWorker->id,
+            'status' => ServiceRequestWorker::STATUS_NOT_SELECTED,
+        ]);
+    }
+
     public function test_customer_cannot_create_booking_request_for_a_past_time_today(): void
     {
         CarbonImmutable::setTestNow('2026-05-11 10:30:00');
@@ -393,6 +513,36 @@ class BookingSystemTest extends TestCase
         }
     }
 
+    public function test_worker_booking_status_update_reuses_first_response_for_same_idempotency_key(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $booking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $headers = ['X-Idempotency-Key' => 'worker-booking-status-update-test'];
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/worker/bookings/{$booking->id}/status", [
+                'status' => Booking::STATUS_ACCEPTED,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.booking.status', Booking::STATUS_ACCEPTED);
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/worker/bookings/{$booking->id}/status", [
+                'status' => Booking::STATUS_ACCEPTED,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.booking.status', Booking::STATUS_ACCEPTED);
+    }
+
     public function test_worker_cannot_start_booking_before_scheduled_time(): void
     {
         CarbonImmutable::setTestNow('2026-05-11 09:30:00');
@@ -509,6 +659,40 @@ class BookingSystemTest extends TestCase
         ]);
     }
 
+    public function test_worker_booking_request_response_reuses_first_response_for_same_idempotency_key(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+        ]);
+        $bookingRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $headers = ['X-Idempotency-Key' => 'worker-booking-request-response-test'];
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+                'status' => ServiceRequestWorker::STATUS_CANCELLED,
+                'response_reason' => 'Already booked with another customer at this time.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.worker_request.status', ServiceRequestWorker::STATUS_CANCELLED);
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/worker/booking-requests/{$bookingRequest->id}/respond", [
+                'status' => ServiceRequestWorker::STATUS_CANCELLED,
+                'response_reason' => 'Already booked with another customer at this time.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.worker_request.status', ServiceRequestWorker::STATUS_CANCELLED);
+    }
+
     public function test_single_worker_request_is_confirmed_when_worker_accepts(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();
@@ -611,6 +795,66 @@ class BookingSystemTest extends TestCase
             ServiceRequestWorkflowNotification::class,
             function (ServiceRequestWorkflowNotification $notification) use ($customer): bool {
                 return $notification->toArray($customer)['event'] === 'service_request_accepted';
+            }
+        );
+    }
+
+    public function test_customer_gets_clear_notification_when_all_workers_decline_request(): void
+    {
+        Notification::fake();
+
+        [$customer, $firstWorker, $service] = $this->bookingActors();
+        $secondWorker = $this->addMatchingWorkerForService($service);
+
+        $serviceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'requested_date' => '2026-05-11',
+            'start_time' => '10:00',
+            'end_time' => '11:00',
+            'address' => '123 Test Street',
+            'description' => 'Need a technician.',
+            'status' => ServiceRequest::STATUS_OPEN,
+        ]);
+
+        $firstWorkerRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $firstWorker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        $secondWorkerRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $serviceRequest->id,
+            'worker_id' => $secondWorker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($firstWorker);
+
+        $this->patchJson("/api/worker/booking-requests/{$firstWorkerRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_REJECTED,
+        ])->assertOk();
+
+        Sanctum::actingAs($secondWorker);
+
+        $this->patchJson("/api/worker/booking-requests/{$secondWorkerRequest->id}/respond", [
+            'status' => ServiceRequestWorker::STATUS_CANCELLED,
+            'response_reason' => 'No longer available for this slot.',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('service_requests', [
+            'id' => $serviceRequest->id,
+            'status' => ServiceRequest::STATUS_CANCELLED,
+        ]);
+
+        Notification::assertSentTo(
+            $customer,
+            ServiceRequestWorkflowNotification::class,
+            function (ServiceRequestWorkflowNotification $notification) use ($customer): bool {
+                $payload = $notification->toArray($customer);
+
+                return $payload['event'] === 'service_request_unavailable'
+                    && $payload['title'] === 'No workers available';
             }
         );
     }
@@ -744,6 +988,44 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('data.worker_requests.0.status', ServiceRequestWorker::STATUS_PENDING);
     }
 
+    public function test_worker_booking_request_list_supports_search(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $matchingServiceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'address' => '42 Market Road',
+            'description' => 'Kitchen sink leaking badly.',
+        ]);
+
+        $matchingWorkerRequest = ServiceRequestWorker::factory()->create([
+            'service_request_id' => $matchingServiceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        $otherServiceRequest = ServiceRequest::factory()->create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'address' => '8 Lake View',
+            'description' => 'Garden cleanup request.',
+        ]);
+
+        ServiceRequestWorker::factory()->create([
+            'service_request_id' => $otherServiceRequest->id,
+            'worker_id' => $worker->id,
+            'status' => ServiceRequestWorker::STATUS_PENDING,
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/booking-requests?search=Kitchen')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.worker_requests')
+            ->assertJsonPath('data.worker_requests.0.id', $matchingWorkerRequest->id);
+    }
+
     public function test_customer_can_reschedule_request_that_is_awaiting_reschedule(): void
     {
         [$customer, $worker, $service] = $this->bookingActors();
@@ -865,6 +1147,70 @@ class BookingSystemTest extends TestCase
                 ->assertUnprocessable()
                 ->assertJsonValidationErrors('start_time')
                 ->assertJsonPath('errors.start_time.0', 'Please choose the current time or a future time.');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_customer_cannot_create_booking_more_than_one_month_ahead(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-11 10:30:00');
+
+        try {
+            [$customer, $worker, $service] = $this->bookingActors();
+            Sanctum::actingAs($customer);
+
+            $this->postJson('/api/customer/bookings', [
+                'worker_id' => $worker->id,
+                'service_id' => $service->id,
+                'booking_date' => '2026-06-12',
+                'start_time' => '10:00',
+                'end_time' => '11:00',
+                'address' => '123 Test Street',
+                'issue_description' => 'AC is not cooling.',
+            ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('booking_date')
+                ->assertJsonPath('errors.booking_date.0', 'The booking date must be within one month from today.');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_customer_cannot_reschedule_request_more_than_one_month_ahead(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-11 10:30:00');
+
+        try {
+            [$customer, $worker, $service] = $this->bookingActors();
+
+            $serviceRequest = ServiceRequest::factory()->create([
+                'customer_id' => $customer->id,
+                'service_id' => $service->id,
+                'requested_date' => '2026-05-11',
+                'start_time' => '12:00',
+                'end_time' => '13:00',
+                'status' => ServiceRequest::STATUS_OPEN,
+            ]);
+            ServiceRequestWorker::factory()->create([
+                'service_request_id' => $serviceRequest->id,
+                'worker_id' => $worker->id,
+                'status' => ServiceRequestWorker::STATUS_AWAITING_RESCHEDULE,
+                'response_reason' => 'Worker is no longer available for selected time slot.',
+                'responded_at' => now(),
+            ]);
+
+            Sanctum::actingAs($customer);
+
+            $this->patchJson("/api/customer/bookings/{$serviceRequest->id}/reschedule", [
+                'booking_date' => '2026-06-12',
+                'start_time' => '12:00',
+                'end_time' => '13:00',
+                'duration_minutes' => 60,
+            ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('booking_date')
+                ->assertJsonPath('errors.booking_date.0', 'The booking date must be within one month from today.');
         } finally {
             CarbonImmutable::setTestNow();
         }
@@ -1025,6 +1371,82 @@ class BookingSystemTest extends TestCase
             ->assertJsonPath('data.reviews.0.rating', 4);
     }
 
+    public function test_worker_booking_list_supports_search(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+
+        $matchingBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_CONFIRMED,
+            'address' => '21 River Street',
+            'issue_description' => 'Bathroom tap replacement needed.',
+        ]);
+
+        Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+            'address' => '11 Hill Road',
+            'issue_description' => 'Ceiling fan service.',
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/bookings?search=Bathroom')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.bookings')
+            ->assertJsonPath('data.bookings.0.id', $matchingBooking->id);
+    }
+
+    public function test_worker_reviews_support_search_and_rating_filters(): void
+    {
+        [$customer, $worker, $service] = $this->bookingActors();
+        $otherCustomer = User::factory()->for(Role::where('slug', 'customer')->firstOrFail())->create([
+            'name' => 'Second Customer',
+        ]);
+
+        $matchingBooking = Booking::factory()->create([
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Review::factory()->create([
+            'booking_id' => $matchingBooking->id,
+            'customer_id' => $customer->id,
+            'worker_id' => $worker->id,
+            'rating' => 5,
+            'review' => 'Excellent plumbing cleanup.',
+        ]);
+
+        $otherBooking = Booking::factory()->create([
+            'customer_id' => $otherCustomer->id,
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'status' => Booking::STATUS_COMPLETED,
+        ]);
+
+        Review::factory()->create([
+            'booking_id' => $otherBooking->id,
+            'customer_id' => $otherCustomer->id,
+            'worker_id' => $worker->id,
+            'rating' => 3,
+            'review' => 'Average overall support.',
+        ]);
+
+        Sanctum::actingAs($worker);
+
+        $this->getJson('/api/worker/reviews?search=plumbing&rating=5')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.reviews')
+            ->assertJsonPath('data.reviews.0.booking_id', $matchingBooking->id)
+            ->assertJsonPath('data.reviews.0.rating', 5);
+    }
+
     public function test_customer_can_select_final_worker_from_multi_worker_request(): void
     {
         [$customer, $firstWorker, $service] = $this->bookingActors();
@@ -1166,5 +1588,27 @@ class BookingSystemTest extends TestCase
         ]);
 
         return [$customer, $worker, $service];
+    }
+
+    private function addMatchingWorkerForService(Service $service): User
+    {
+        $worker = User::factory()->for(Role::where('slug', 'worker')->firstOrFail())->create();
+
+        WorkerService::factory()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'pricing_type' => WorkerService::PricingFixed,
+            'price' => 550,
+            'is_active' => true,
+        ]);
+
+        WorkerSchedule::factory()->create([
+            'worker_id' => $worker->id,
+            'day_of_week' => 1,
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+        ]);
+
+        return $worker;
     }
 }

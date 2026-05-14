@@ -3,20 +3,20 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\IndexUnblockRequestsRequest;
 use App\Http\Requests\Api\Admin\ReviewUnblockRequestRequest;
 use App\Http\Resources\UnblockRequestResource;
 use App\Models\UnblockRequest;
 use App\Services\Admin\UnblockRequestManagementService;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class UnblockRequestController extends Controller
 {
     public function __construct(private readonly UnblockRequestManagementService $unblockRequests) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(IndexUnblockRequestsRequest $request): JsonResponse
     {
         // Admin unblock queues show pending and reviewed appeals with reviewer context.
         $unblockRequests = $this->unblockRequests->paginate($request);

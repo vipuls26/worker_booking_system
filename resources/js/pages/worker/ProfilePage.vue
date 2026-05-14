@@ -6,18 +6,22 @@ import AppButton from '../../components/common/AppButton.vue';
 import SkeletonCard from '../../components/common/SkeletonCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { getWorkerVerification, submitWorkerVerification } from '../../api/worker/verification';
 import { useWorkerProfileStore } from '../../stores/worker/profile';
+import { workerProfileSchema } from '../../validation/profileSchemas';
 
 const profileStore = useWorkerProfileStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(workerProfileSchema);
 const photoPreview = ref('');
 const objectUrl = ref('');
 const verification = ref(null);
 const verificationSubmitting = ref(false);
 const verificationIdProof = ref(null);
 const verificationCertificates = ref([]);
+const workerEmail = computed(() => profileStore.profile?.user?.email || '');
 
 const form = reactive({
     profile_photo: null,
@@ -30,6 +34,28 @@ const form = reactive({
 });
 
 const skills = computed(() => form.skills_text.split(','));
+const profileCompletionChecks = computed(() => [
+    { label: 'Profile photo', done: Boolean(photoPreview.value) },
+    { label: 'Bio added', done: Boolean(form.bio.trim()) },
+    { label: 'City and address', done: Boolean(form.city.trim() && form.address.trim()) },
+    { label: 'Phone number', done: Boolean(form.phone.trim()) },
+    { label: 'Skills listed', done: Boolean(skills.value.map((skill) => skill.trim()).filter(Boolean).length) },
+    { label: 'Experience set', done: Number(form.experience_years || 0) > 0 },
+    { label: 'Verification submitted', done: Boolean(verification.value?.id_proof_url || verificationIdProof.value) },
+]);
+const completedProfileChecks = computed(() => profileCompletionChecks.value.filter((item) => item.done).length);
+const profileCompletionPercent = computed(() => Math.round((completedProfileChecks.value / profileCompletionChecks.value.length) * 100));
+const completionToneClass = computed(() => {
+    if (profileCompletionPercent.value >= 100) {
+        return 'bg-emerald-500';
+    }
+
+    if (profileCompletionPercent.value >= 60) {
+        return 'bg-blue-500';
+    }
+
+    return 'bg-amber-500';
+});
 const verificationStatusClasses = computed(() => {
     const status = verification.value?.status || 'pending';
 
@@ -77,6 +103,15 @@ function handlePhotoChange(event) {
 
 async function submit() {
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema(form);
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted worker profile fields.');
+
+        return;
+    }
 
     try {
         const response = await profileStore.update({
@@ -141,6 +176,12 @@ async function submitVerification() {
 }
 
 watch(() => profileStore.profile, fillForm);
+watch(() => form.bio, () => clearValidationErrors('bio'));
+watch(() => form.experience_years, () => clearValidationErrors('experience_years'));
+watch(() => form.address, () => clearValidationErrors('address'));
+watch(() => form.city, () => clearValidationErrors('city'));
+watch(() => form.skills_text, () => clearValidationErrors('skills_text'));
+watch(() => form.phone, () => clearValidationErrors('phone'));
 
 onMounted(async () => {
     try {
@@ -166,7 +207,7 @@ onBeforeUnmount(() => {
             <SkeletonCard :lines="9" :avatar="false" />
         </div>
 
-        <form v-else class="grid gap-6 lg:grid-cols-[320px_1fr]" @submit.prevent="submit">
+        <form v-else class="grid gap-6 lg:grid-cols-[320px_1fr]" data-testid="worker-profile-page" @submit.prevent="submit">
             <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
                 <div class="flex flex-col items-center text-center">
                     <div class="flex size-36 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-950 dark:text-gray-500">
@@ -187,15 +228,41 @@ onBeforeUnmount(() => {
                         </p>
                         <p class="mt-1">Keep your details accurate so customers can book the right local help.</p>
                     </div>
+
+                    <div class="mt-5 rounded-lg border border-gray-200 p-4 text-left dark:border-white/10">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-900 dark:text-white">Profile completion</p>
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Complete every item to improve trust and reduce booking friction.</p>
+                            </div>
+                            <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-gray-200">
+                                {{ profileCompletionPercent }}%
+                            </span>
+                        </div>
+                        <div class="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-white/10">
+                            <div class="h-full rounded-full transition-all" :class="completionToneClass" :style="{ width: `${profileCompletionPercent}%` }"></div>
+                        </div>
+                        <div class="mt-3 grid gap-2">
+                            <div v-for="item in profileCompletionChecks" :key="item.label" class="flex items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2 text-sm dark:bg-gray-950">
+                                <span class="text-gray-700 dark:text-gray-200">{{ item.label }}</span>
+                                <span
+                                    class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                                    :class="item.done ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'"
+                                >
+                                    {{ item.done ? 'Done' : 'Needed' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="mt-5 rounded-lg border border-gray-200 p-4 text-left dark:border-white/10">
+                <div class="mt-5 rounded-lg border border-gray-200 p-4 text-left dark:border-white/10" data-testid="worker-verification-panel">
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Worker verification</h2>
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Submit ID proof for admin approval.</p>
                         </div>
-                        <span :class="['inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize', verificationStatusClasses]">
+                        <span :class="['inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize', verificationStatusClasses]" data-testid="worker-verification-status">
                             {{ verification?.status || 'pending' }}
                         </span>
                     </div>
@@ -235,6 +302,7 @@ onBeforeUnmount(() => {
                             <input
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
+                                data-testid="worker-verification-id-proof"
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationProofChange"
                             >
@@ -248,6 +316,7 @@ onBeforeUnmount(() => {
                                 type="file"
                                 accept=".jpg,.jpeg,.png,.pdf"
                                 multiple
+                                data-testid="worker-verification-certificates"
                                 class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-sm text-gray-900 file:mr-3 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:border-white/10 dark:bg-gray-950 dark:text-white dark:file:bg-white dark:file:text-gray-950"
                                 @change="handleVerificationCertificateChange"
                             >
@@ -257,7 +326,7 @@ onBeforeUnmount(() => {
                         </label>
                         <p v-if="errors.certificates?.length" class="text-sm text-red-600 dark:text-red-400">{{ errors.certificates[0] }}</p>
 
-                        <AppButton type="button" icon="pi-send" :loading="verificationSubmitting" @click="submitVerification">
+                        <AppButton type="button" icon="pi-send" :loading="verificationSubmitting" data-testid="worker-verification-submit" @click="submitVerification">
                             {{ verificationButtonText }}
                         </AppButton>
                     </div>
@@ -271,10 +340,14 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="grid gap-4 md:grid-cols-2">
-                    <FormInput id="worker_phone" v-model="form.phone" label="Phone" type="tel" autocomplete="tel" :error="errors.phone" />
-                    <FormInput id="worker_city" v-model="form.city" label="City" :error="errors.city" />
-                    <FormInput id="worker_experience" v-model="form.experience_years" label="Experience years" type="number" min="0" max="60" step="1" :error="errors.experience_years" />
-                    <FormInput id="worker_skills" v-model="form.skills_text" label="Skills" :error="errors.skills" />
+                    <div class="md:col-span-2">
+                        <FormInput id="worker_email" :model-value="workerEmail" label="Email" type="email" readonly />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This email is tied to your login and verification flow.</p>
+                    </div>
+                    <FormInput id="worker_phone" v-model="form.phone" label="Phone" type="tel" autocomplete="tel" :error="validationErrors.phone || errors.phone || []" />
+                    <FormInput id="worker_city" v-model="form.city" label="City" :error="validationErrors.city || errors.city || []" />
+                    <FormInput id="worker_experience" v-model="form.experience_years" label="Experience years" type="number" min="0" max="60" step="1" :error="validationErrors.experience_years || errors.experience_years || []" />
+                    <FormInput id="worker_skills" v-model="form.skills_text" label="Skills" :error="validationErrors.skills_text || errors.skills || []" />
                 </div>
 
                 <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Separate multiple skills with commas.</p>
@@ -288,7 +361,7 @@ onBeforeUnmount(() => {
                             rows="3"
                             class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
                         ></textarea>
-                        <p v-if="errors.address?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.address[0] }}</p>
+                        <p v-if="(validationErrors.address || errors.address)?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ (validationErrors.address || errors.address)[0] }}</p>
                     </div>
 
                     <div>
@@ -299,7 +372,7 @@ onBeforeUnmount(() => {
                             rows="5"
                             class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:focus:border-white dark:focus:ring-white"
                         ></textarea>
-                        <p v-if="errors.bio?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ errors.bio[0] }}</p>
+                        <p v-if="(validationErrors.bio || errors.bio)?.length" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ (validationErrors.bio || errors.bio)[0] }}</p>
                     </div>
                 </div>
 

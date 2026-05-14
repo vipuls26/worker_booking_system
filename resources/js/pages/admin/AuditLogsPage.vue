@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminAuditLogs, adminBookingAuditLogs, adminUserAuditLogs } from '../../api/admin';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import AppPanel from '../../components/common/AppPanel.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormInput from '../../components/forms/FormInput.vue';
@@ -14,8 +14,10 @@ import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const loading = ref(false);
 const route = useRoute();
+const router = useRouter();
 const auditLogs = ref([]);
 const meta = ref({});
+const filtersReady = ref(false);
 const filters = ref({
     search: '',
     action: '',
@@ -163,6 +165,7 @@ function resetFilters() {
         date_to: '',
     };
 
+    syncFiltersToRoute();
     load();
 }
 
@@ -179,11 +182,47 @@ function prettyMetadata(metadata) {
 }
 
 useDebouncedWatch(
-    () => [filters.value.action, filters.value.actor_role, filters.value.date_from, filters.value.date_to],
-    () => load(),
+    () => [filters.value.search, filters.value.action, filters.value.actor_role, filters.value.date_from, filters.value.date_to],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
-onMounted(load);
+function applyRouteFilters() {
+    const allowedFilters = ['search', 'action', 'actor_role', 'date_from', 'date_to'];
+
+    allowedFilters.forEach((key) => {
+        if (route.query[key] !== undefined) {
+            filters.value[key] = String(route.query[key]);
+        }
+    });
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(route.query.user ? { user: route.query.user } : {}),
+            ...(route.query.booking ? { booking: route.query.booking } : {}),
+            ...(filters.value.search ? { search: filters.value.search } : {}),
+            ...(filters.value.action ? { action: filters.value.action } : {}),
+            ...(filters.value.actor_role ? { actor_role: filters.value.actor_role } : {}),
+            ...(filters.value.date_from ? { date_from: filters.value.date_from } : {}),
+            ...(filters.value.date_to ? { date_to: filters.value.date_to } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
@@ -236,7 +275,7 @@ onMounted(load);
                         </div>
                     </div>
 
-                    <div class="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_190px_160px_160px_160px_auto] xl:items-end">
+                    <div class="grid gap-3 2xl:grid-cols-[minmax(280px,1fr)_190px_160px_160px_160px_auto] 2xl:items-end">
                         <div class="xl:min-w-0">
                             <SearchFilter v-model="filters.search" placeholder="Search actor, IP, action, or subject" @search="load()" />
                         </div>
@@ -253,9 +292,9 @@ onMounted(load);
                             @click="resetFilters"
                         >
                             <i class="pi pi-filter-slash" aria-hidden="true"></i>
-                            <span class="xl:hidden 2xl:inline">Clear</span>
+                            <span>Clear</span>
                         </button>
-                        <div v-else class="hidden h-10 xl:block"></div>
+                        <div v-else class="hidden h-10 2xl:block"></div>
                     </div>
                 </div>
             </AppPanel>
@@ -284,7 +323,7 @@ onMounted(load);
                         </div>
 
                         <div class="min-w-0 flex-1">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                                 <div class="min-w-0">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2 class="font-semibold text-gray-900 dark:text-white">{{ log.action_label }}</h2>

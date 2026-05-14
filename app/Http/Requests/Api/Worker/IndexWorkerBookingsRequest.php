@@ -15,6 +15,7 @@ class IndexWorkerBookingsRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
+            'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', Rule::in(['open', 'worker_selected', 'pending', 'confirmed', 'accepted', 'rejected', 'expired', 'selected', 'not_selected', 'in_progress', 'completed', 'cancelled'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];

@@ -7,10 +7,13 @@ import AppPanel from '../../components/common/AppPanel.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import { useAuthStore } from '../../stores/auth';
+import { profileSchema } from '../../validation/profileSchemas';
 
 const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(profileSchema);
 const form = reactive({
     name: '',
     email: '',
@@ -32,6 +35,18 @@ function fillForm() {
  */
 async function submit() {
     clearApiErrors();
+    clearValidationErrors();
+
+    const isValid = await validateWithSchema({
+        ...form,
+        address: '',
+    });
+
+    if (! isValid) {
+        toast.error('Please fix the highlighted admin profile fields.');
+
+        return;
+    }
 
     try {
         const response = await authStore.updateProfile(form);
@@ -43,6 +58,9 @@ async function submit() {
 }
 
 watch(() => authStore.user, fillForm, { immediate: true });
+watch(() => form.name, () => clearValidationErrors('name'));
+watch(() => form.email, () => clearValidationErrors('email'));
+watch(() => form.phone, () => clearValidationErrors('phone'));
 </script>
 
 <template>
@@ -58,13 +76,13 @@ watch(() => authStore.user, fillForm, { immediate: true });
 
                     <div class="grid gap-4 sm:grid-cols-2">
                         <FormInput id="admin_name" v-model="form.name" label="Name" autocomplete="name"
-                            :error="errors.name" />
+                            :error="validationErrors.name || errors.name || []" />
                         <FormInput id="admin_phone" v-model="form.phone" label="Phone" autocomplete="tel"
-                            :error="errors.phone" />
+                            :error="validationErrors.phone || errors.phone || []" />
                     </div>
 
                     <FormInput id="admin_email" v-model="form.email" type="email" label="Email" autocomplete="email"
-                        :error="errors.email" />
+                        :error="validationErrors.email || errors.email || []" />
 
                     <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-gray-950">
                         <div class="flex items-center gap-2 text-sm font-medium"

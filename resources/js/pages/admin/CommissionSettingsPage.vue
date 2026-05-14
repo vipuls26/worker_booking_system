@@ -1,16 +1,19 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import AppButton from '../../components/common/AppButton.vue';
 import AppPanel from '../../components/common/AppPanel.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
+import { useYupValidation } from '../../composables/useYupValidation';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 import { useAdminCommissionSettingsStore } from '../../stores/admin/commissionSettings';
+import { commissionSettingsSchema } from '../../validation/adminSchemas';
 
 const commissionSettingsStore = useAdminCommissionSettingsStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(commissionSettingsSchema);
 
 const form = ref({
     commission_rate: '',
@@ -34,14 +37,17 @@ async function loadSetting() {
 
 function openConfirmation() {
     clearApiErrors();
+    clearValidationErrors();
 
-    if (form.value.commission_rate === '') {
-        errors.value = { commission_rate: ['Please provide commission rate.'] };
+    validateWithSchema(form.value).then((isValid) => {
+        if (! isValid) {
+            toast.error('Please fix the commission rate before saving.');
 
-        return;
-    }
+            return;
+        }
 
-    confirmationOpen.value = true;
+        confirmationOpen.value = true;
+    });
 }
 
 function cancelConfirmation() {
@@ -67,11 +73,12 @@ async function saveSetting() {
 }
 
 onMounted(() => loadSetting());
+watch(() => form.value.commission_rate, () => clearValidationErrors('commission_rate'));
 </script>
 
 <template>
     <AdminLayout title="Commission Settings">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="admin-commission-settings-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Global commission rate</h2>
@@ -99,7 +106,8 @@ onMounted(() => loadSetting());
                         min="0"
                         max="100"
                         step="0.01"
-                        :error="errors.commission_rate"
+                        :error="validationErrors.commission_rate || errors.commission_rate || []"
+                        data-testid="commission-rate-input"
                     />
 
                     <div class="grid gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-white/10 dark:bg-white/5 sm:grid-cols-3">
@@ -123,6 +131,7 @@ onMounted(() => loadSetting());
                             icon="pi-save"
                             :loading="commissionSettingsStore.saving"
                             :full-width="false"
+                            data-testid="commission-save-button"
                         >
                             {{ commissionSettingsStore.saving ? 'Saving...' : 'Save rate' }}
                         </AppButton>

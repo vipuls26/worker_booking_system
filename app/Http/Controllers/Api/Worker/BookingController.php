@@ -12,13 +12,17 @@ use App\Http\Resources\ServiceRequestWorkerResource;
 use App\Models\Booking;
 use App\Models\ServiceRequestWorker;
 use App\Services\Booking\BookingService;
+use App\Support\Api\IdempotencyResponseCache;
 use App\Support\Api\PaginationMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 
 class BookingController extends Controller
 {
-    public function __construct(private readonly BookingService $bookings) {}
+    public function __construct(
+        private readonly BookingService $bookings,
+        private readonly IdempotencyResponseCache $idempotency,
+    ) {}
 
     public function index(IndexWorkerBookingsRequest $request): JsonResponse
     {
@@ -26,6 +30,7 @@ class BookingController extends Controller
         $bookings = $this->bookings->workerBookings(
             $request->user(),
             $request->string('status')->toString() ?: null,
+            $request->string('search')->trim()->toString() ?: null,
             $request->integer('per_page', 10),
         );
 
@@ -59,6 +64,7 @@ class BookingController extends Controller
         $bookingRequests = $this->bookings->workerRequests(
             $request->user(),
             $request->string('status')->toString() ?: null,
+            $request->string('search')->trim()->toString() ?: null,
             $request->integer('per_page', 10),
         );
 
@@ -91,20 +97,22 @@ class BookingController extends Controller
     public function respond(RespondBookingRequestRequest $request, ServiceRequestWorker $bookingRequest): JsonResponse
     {
         // Worker responses update the request and may auto-confirm one-worker bookings.
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking request updated',
-            'data' => [
-                'worker_request' => new ServiceRequestWorkerResource(
-                    $this->bookings->respondToRequest(
-                        serviceRequestWorker: $bookingRequest,
-                        worker: $request->user(),
-                        status: $request->string('status')->toString(),
-                        reason: $request->string('response_reason')->toString() ?: null,
+        return $this->idempotency->run($request, 'worker-booking-request-respond', function () use ($request, $bookingRequest): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking request updated',
+                'data' => [
+                    'worker_request' => new ServiceRequestWorkerResource(
+                        $this->bookings->respondToRequest(
+                            serviceRequestWorker: $bookingRequest,
+                            worker: $request->user(),
+                            status: $request->string('status')->toString(),
+                            reason: $request->string('response_reason')->toString() ?: null,
+                        ),
                     ),
-                ),
-            ],
-        ]);
+                ],
+            ]);
+        });
     }
 
     public function updateStatus(UpdateBookingStatusRequest $request, Booking $booking): JsonResponse
@@ -117,13 +125,15 @@ class BookingController extends Controller
         $reasonField = $status === Booking::STATUS_CANCELLED ? 'cancelled_reason' : 'rejection_reason';
         $reason = $request->string($reasonField)->toString() ?: null;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking status updated',
-            'data' => [
-                'booking' => new BookingResource($this->bookings->updateStatus($booking, $status, $reason, $request->user())),
-            ],
-        ]);
+        return $this->idempotency->run($request, 'worker-booking-status-update', function () use ($request, $booking, $status, $reason): JsonResponse {
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking status updated',
+                'data' => [
+                    'booking' => new BookingResource($this->bookings->updateStatus($booking, $status, $reason, $request->user())),
+                ],
+            ]);
+        });
     }
 
     public function start(StartBookingRequest $request, Booking $booking): JsonResponse
@@ -131,20 +141,22 @@ class BookingController extends Controller
         // Only the assigned worker can start the booking.
         Gate::authorize('updateStatus', $booking);
 
-        // The shared booking service checks schedule time and workflow rules.
-        $startedBooking = $this->bookings->updateStatus(
-            booking: $booking,
-            status: Booking::STATUS_IN_PROGRESS,
-            actor: $request->user(),
-        );
+        return $this->idempotency->run($request, 'worker-booking-start', function () use ($request, $booking): JsonResponse {
+            // The shared booking service checks schedule time and workflow rules.
+            $startedBooking = $this->bookings->updateStatus(
+                booking: $booking,
+                status: Booking::STATUS_IN_PROGRESS,
+                actor: $request->user(),
+            );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Booking started successfully',
-            'data' => [
-                'booking' => new BookingResource($startedBooking),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking started successfully',
+                'data' => [
+                    'booking' => new BookingResource($startedBooking),
+                ],
+            ]);
+        });
     }
 
     private function ensureRequestOwnedByWorker(ServiceRequestWorker $bookingRequest): void

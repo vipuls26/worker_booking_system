@@ -21,6 +21,7 @@ const workingWindows = computed(() => schedulesStore.schedules.filter((schedule)
 const offDays = computed(() => schedulesStore.schedules.filter((schedule) => schedule.is_off_day).length);
 const configuredDays = computed(() => new Set(schedulesStore.schedules.map((schedule) => schedule.day_of_week)).size);
 const hasScheduleGaps = computed(() => configuredDays.value < 7);
+const scheduleCoverageTone = computed(() => (hasScheduleGaps.value ? 'text-amber-900 dark:text-amber-100' : 'text-emerald-900 dark:text-emerald-100'));
 
 const scheduleStats = computed(() => [
     {
@@ -130,16 +131,16 @@ onMounted(async () => {
 
 <template>
     <DashboardLayout title="Worker Availability">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="worker-availability-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Availability</h2>
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Plan weekly working windows and mark off days so customers see accurate availability.</p>
                 </div>
-                <AppButton type="button" icon="pi-plus" :full-width="false" @click="openCreateModal">Add window</AppButton>
+                <AppButton type="button" icon="pi-plus" :full-width="false" data-testid="worker-schedule-open-create" @click="openCreateModal">Add window</AppButton>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <AppPanel v-for="stat in scheduleStats" :key="stat.label" class="flex items-center gap-3">
                     <span class="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200">
                         <i :class="['pi', stat.icon]" aria-hidden="true"></i>
@@ -157,6 +158,22 @@ onMounted(async () => {
                     <div>
                         <p class="text-sm font-semibold">Some days are not configured</p>
                         <p class="mt-1 text-sm">Set working windows or mark off days for all seven days so customers see accurate availability.</p>
+                    </div>
+                </div>
+            </AppPanel>
+
+            <AppPanel class="border border-gray-200 bg-white ring-0 dark:border-white/10 dark:bg-gray-900">
+                <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">Conflict prevention</p>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                            The system blocks overlapping working windows, prevents off-days from mixing with active hours, and protects slots that already conflict with accepted requests or bookings.
+                        </p>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Coverage status</p>
+                        <p class="mt-2 text-2xl font-semibold" :class="scheduleCoverageTone">{{ configuredDays }}/7 days</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Complete all weekdays for cleaner customer availability results.</p>
                     </div>
                 </div>
             </AppPanel>

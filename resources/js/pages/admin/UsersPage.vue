@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { adminUsers, blockAdminUser, deleteAdminUser, unblockAdminUser, verifyAdminUser } from '../../api/admin';
 import AdminTable from '../../components/admin/AdminTable.vue';
-import PaginationControls from '../../components/admin/PaginationControls.vue';
+import PaginationControls from '../../components/common/PaginationControls.vue';
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue';
 import StatusBadge from '../../components/common/StatusBadge.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
@@ -11,11 +12,14 @@ import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import AdminLayout from '../../layouts/AdminLayout.vue';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const users = ref([]);
 const meta = ref({});
 const search = ref('');
 const role = ref('');
+const filtersReady = ref(false);
 const deleting = ref(null);
 const blocking = ref(null);
 const blockType = ref('unblock');
@@ -82,8 +86,15 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => role.value,
-    () => load(),
+    () => [search.value, role.value],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
 function openBlockDialog(user, nextBlockType = 'unblock') {
@@ -139,19 +150,43 @@ async function confirmDelete() {
     }
 }
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        search.value = String(route.query.search);
+    }
+
+    if (route.query.role !== undefined) {
+        role.value = String(route.query.role);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(search.value ? { search: search.value } : {}),
+            ...(role.value ? { role: role.value } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
     <AdminLayout title="Users Management">
-        <div class="space-y-4">
+        <div class="space-y-4" data-testid="admin-users-page">
             <div class="grid gap-3 md:grid-cols-[1fr_220px]">
                 <SearchFilter v-model="search" placeholder="Search name or email" @search="load()" />
                 <FormSelect id="role_filter" v-model="role" label="Role" :options="roleOptions" />
             </div>
 
             <AdminTable :columns="[{ key: 'user', label: 'User' }, { key: 'role', label: 'Role' }, { key: 'email_status', label: 'Email status' }, { key: 'account_status', label: 'Account status' }, { key: 'admin_approval', label: 'Admin approval' }]" :loading="loading" :has-records="users.length > 0">
-                <tr v-for="user in users" :key="user.id">
+                <tr v-for="user in users" :key="user.id" :data-testid="`admin-user-row-${user.id}`">
                     <td class="px-4 py-3">
                         <p class="font-medium text-gray-900 dark:text-white">{{ user.name }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ user.email }}</p>
@@ -188,15 +223,16 @@ onMounted(load);
                             </span>
                             <button
                                 v-else-if="!user.is_admin_verified"
+                                :data-testid="`admin-user-verify-${user.id}`"
                                 :class="neutralChip"
                                 @click="verifyUser(user)"
                             >
                                 Verify
                             </button>
-                            <button v-if="user.account_status === 'active'" :class="warningChip" @click="openBlockDialog(user, 'partially_blocked')">Partial block</button>
-                            <button v-if="user.account_status === 'active' || user.account_status === 'partially_blocked'" :class="dangerChip" @click="openBlockDialog(user, 'fully_blocked')">Full block</button>
-                            <button v-if="user.account_status !== 'active'" :class="neutralChip" @click="openBlockDialog(user, 'unblock')">Unblock</button>
-                            <button :class="dangerChip" @click="deleting = user">Delete</button>
+                            <button v-if="user.account_status === 'active'" :data-testid="`admin-user-partial-block-${user.id}`" :class="warningChip" @click="openBlockDialog(user, 'partially_blocked')">Partial block</button>
+                            <button v-if="user.account_status === 'active' || user.account_status === 'partially_blocked'" :data-testid="`admin-user-full-block-${user.id}`" :class="dangerChip" @click="openBlockDialog(user, 'fully_blocked')">Full block</button>
+                            <button v-if="user.account_status !== 'active'" :data-testid="`admin-user-unblock-${user.id}`" :class="neutralChip" @click="openBlockDialog(user, 'unblock')">Unblock</button>
+                            <button :data-testid="`admin-user-delete-${user.id}`" :class="dangerChip" @click="deleting = user">Delete</button>
                         </div>
                     </td>
                 </tr>

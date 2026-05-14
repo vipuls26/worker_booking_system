@@ -14,7 +14,7 @@ class WorkerAvailabilityRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'date' => ['required', 'date_format:Y-m-d'],
+            'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
             'slot_minutes' => ['nullable', 'integer', 'in:30,45,60,90,120'],
         ];
     }

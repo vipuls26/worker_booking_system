@@ -12,7 +12,7 @@ const steps = ['open', 'worker_selected', 'in_progress', 'completed'];
 const currentStatus = computed(() => (props.status === 'confirmed' ? 'worker_selected' : props.status));
 
 function stepState(step) {
-    if (props.status === 'cancelled' || props.status === 'rejected') {
+    if (props.status === 'cancelled' || props.status === 'rejected' || props.status === 'unavailable') {
         return 'muted';
     }
 
@@ -21,11 +21,14 @@ function stepState(step) {
 </script>
 
 <template>
-    <div>
-        <div v-if="status === 'cancelled' || status === 'rejected'" class="rounded-md bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+    <div data-testid="booking-status-tracker" :data-status="status">
+        <div v-if="status === 'cancelled' || status === 'rejected'" data-testid="booking-status-banner" class="rounded-md bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
             Request {{ status.replace('_', ' ') }}
         </div>
-        <div v-else-if="status === 'awaiting_reschedule'" class="rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+        <div v-else-if="status === 'unavailable'" data-testid="booking-status-banner" class="rounded-md bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+            No workers are available for this request
+        </div>
+        <div v-else-if="status === 'awaiting_reschedule'" data-testid="booking-status-banner" class="rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
             Request awaiting reschedule
         </div>
         <div v-else class="grid grid-cols-4 gap-2">

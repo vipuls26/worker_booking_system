@@ -13,7 +13,8 @@ class IndexWorkerVerificationsRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', 'string', Rule::in(['pending', 'approved', 'rejected'])],
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', Rule::in(['pending', 'approved', 'rejected', 'resubmission_requested'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

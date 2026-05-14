@@ -1,15 +1,20 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import PaginationControls from '../../components/common/PaginationControls.vue';
 import RatingStars from '../../components/common/RatingStars.vue';
 import SkeletonList from '../../components/common/SkeletonList.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
 import { useWorkerReviewsStore } from '../../stores/worker/reviews';
 
+const route = useRoute();
+const router = useRouter();
 const reviewsStore = useWorkerReviewsStore();
+const filtersReady = ref(false);
 
 const ratingOptions = [
     { label: 'All ratings', value: '' },
@@ -35,18 +40,54 @@ async function load(page = 1) {
 }
 
 useDebouncedWatch(
-    () => [reviewsStore.filters.rating, reviewsStore.filters.sort],
-    () => load(),
+    () => [reviewsStore.filters.search, reviewsStore.filters.rating, reviewsStore.filters.sort],
+    () => {
+        if (! filtersReady.value) {
+            return;
+        }
+
+        syncFiltersToRoute();
+        load();
+    },
 );
 
-onMounted(load);
+function applyRouteFilters() {
+    if (route.query.search !== undefined) {
+        reviewsStore.filters.search = String(route.query.search);
+    }
+
+    if (route.query.rating !== undefined) {
+        reviewsStore.filters.rating = Number(route.query.rating);
+    }
+
+    if (route.query.sort !== undefined) {
+        reviewsStore.filters.sort = String(route.query.sort);
+    }
+}
+
+function syncFiltersToRoute() {
+    router.replace({
+        path: route.path,
+        query: {
+            ...(reviewsStore.filters.search ? { search: reviewsStore.filters.search } : {}),
+            ...(reviewsStore.filters.rating ? { rating: String(reviewsStore.filters.rating) } : {}),
+            ...(reviewsStore.filters.sort && reviewsStore.filters.sort !== 'latest' ? { sort: reviewsStore.filters.sort } : {}),
+        },
+    });
+}
+
+onMounted(() => {
+    applyRouteFilters();
+    filtersReady.value = true;
+    load();
+});
 </script>
 
 <template>
     <DashboardLayout title="My Reviews">
         <div class="space-y-5">
-            <section class="grid gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 md:grid-cols-[1fr_220px_220px] md:items-end">
-                <div>
+            <section class="grid gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10 xl:grid-cols-[minmax(0,1fr)_200px_200px] xl:items-end">
+                <div class="space-y-4">
                     <p class="text-sm font-medium uppercase text-gray-500 dark:text-gray-400">Average rating</p>
                     <div class="mt-2 flex items-center gap-3">
                         <p class="text-3xl font-semibold text-gray-900 dark:text-white">{{ reviewsStore.summary.average.toFixed(1) }}</p>
@@ -55,6 +96,7 @@ onMounted(load);
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ reviewsStore.summary.count }} reviews</p>
                         </div>
                     </div>
+                    <SearchFilter v-model="reviewsStore.filters.search" placeholder="Search customer, service, or review text" @search="load()" />
                 </div>
                 <FormSelect id="review_rating" v-model="reviewsStore.filters.rating" label="Rating" :options="ratingOptions" option-label="label" option-value="value" />
                 <FormSelect id="review_sort" v-model="reviewsStore.filters.sort" label="Sort" :options="sortOptions" option-label="label" option-value="value" />

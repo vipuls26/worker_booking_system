@@ -4,11 +4,12 @@ import * as bookingsApi from '../../api/worker/bookings';
 export const useWorkerBookingsStore = defineStore('workerBookings', {
     state: () => ({
         bookings: [],
-        booking: null,
         meta: {},
         loading: false,
         saving: false,
+        activeStatusKey: null,
         filters: {
+            search: '',
             status: '',
             per_page: 10,
         },
@@ -19,7 +20,12 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
             this.loading = true;
 
             try {
-                const response = await bookingsApi.listBookings({ ...this.filters, page });
+                const response = await bookingsApi.listBookings({
+                    search: this.filters.search || undefined,
+                    status: this.filters.status || undefined,
+                    per_page: this.filters.per_page,
+                    page,
+                });
                 this.bookings = response.data.data.bookings;
                 this.meta = response.data.data.meta;
 
@@ -29,32 +35,20 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
             }
         },
 
-        async fetchOne(id) {
-            this.loading = true;
-
-            try {
-                const response = await bookingsApi.getBooking(id);
-                this.booking = response.data.data.booking;
-
-                return response.data;
-            } finally {
-                this.loading = false;
-            }
-        },
-
         async updateStatus(id, payload) {
+            this.activeStatusKey = `${id}:${payload.status}`;
             this.saving = true;
 
             try {
                 const response = await bookingsApi.updateBookingStatus(id, payload);
-                this.booking = response.data.data.booking;
                 this.bookings = this.bookings.map((booking) => (
-                    booking.id === this.booking.id ? this.booking : booking
+                    booking.id === response.data.data.booking.id ? response.data.data.booking : booking
                 ));
 
                 return response.data;
             } finally {
                 this.saving = false;
+                this.activeStatusKey = null;
             }
         },
 
@@ -69,13 +63,6 @@ export const useWorkerBookingsStore = defineStore('workerBookings', {
                         ? { ...booking, worker_review: response.data.data.review }
                         : booking
                 ));
-
-                if (this.booking?.id === Number(id)) {
-                    this.booking = {
-                        ...this.booking,
-                        worker_review: response.data.data.review,
-                    };
-                }
 
                 return response.data;
             } finally {

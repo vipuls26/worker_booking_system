@@ -25,11 +25,7 @@ class UnblockRequestResource extends JsonResource
             'reason' => $this->reason,
             'status' => $this->status,
             'account_status' => $this->whenLoaded('user', fn () => $this->user?->account_status),
-            'needs_reverification' => $this->whenLoaded('user', function () {
-                return $this->status === UnblockRequest::STATUS_APPROVED
-                    && $this->user?->isPartiallyBlocked()
-                    && ($this->user?->email_verified_at === null || ! $this->user?->is_verified);
-            }),
+            'needs_reverification' => false,
             'admin_note' => $this->admin_note,
             'reviewed_by' => $this->reviewed_by,
             'reviewer' => new UserResource($this->whenLoaded('reviewer')),

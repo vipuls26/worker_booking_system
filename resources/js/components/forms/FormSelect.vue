@@ -1,6 +1,11 @@
 <script setup>
+import { useAttrs } from 'vue';
 import FormError from './FormError.vue';
 import FormLabel from './FormLabel.vue';
+
+defineOptions({
+    inheritAttrs: false,
+});
 
 defineProps({
     id: {
@@ -38,6 +43,8 @@ defineProps({
 });
 
 defineEmits(['update:modelValue']);
+
+const selectAttributes = useAttrs();
 </script>
 
 <template>
@@ -47,6 +54,7 @@ defineEmits(['update:modelValue']);
             <select
                 :id="id"
                 :value="modelValue"
+                v-bind="selectAttributes"
                 class="block min-h-10 w-full min-w-0 appearance-none rounded-md border-slate-300 bg-white py-2 pl-3 pr-10 text-slate-900 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark] dark:focus:border-blue-400 dark:focus:ring-blue-400"
                 @change="$emit('update:modelValue', Number($event.target.value) || $event.target.value)"
             >

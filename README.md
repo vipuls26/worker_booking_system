@@ -17,7 +17,7 @@ A Laravel API and Vue single-page application for booking verified local workers
 
 - Role-based access for admin, customer, and worker accounts.
 - Email verification and platform verification gates.
-- Customer worker search with service, city, price, rating, date, time, duration, and sorting filters.
+- Customer worker search with keyword, service, city, price, rating, date, time, duration, and sorting filters.
 - Auto-matched service requests sent to multiple eligible workers.
 - Customer requests sent to one chosen worker.
 - Worker request responses with accept, reject, and cancel flows.
@@ -132,6 +132,9 @@ php artisan queue:listen
 ```
 
 The Vue app is served from Laravel routes and talks to the API under `/api`.
+Frontend auth sessions are stored in browser `sessionStorage`, so closing the browser signs the user out more safely than long-lived `localStorage` tokens.
+Frontend forms now use shared Yup schemas for the main auth, profile, password, worker service, worker schedule, and booking request flows.
+The SPA router uses lazy-loaded page chunks so dashboard features load on demand instead of shipping the whole app on the first visit.
 
 ## Common Commands
 
@@ -324,4 +327,4 @@ If route or config changes seem stale:
 php artisan optimize:clear
 ```
 
-If the API returns unauthenticated responses, check Sanctum token storage in the SPA and confirm `APP_URL` matches the local server URL.
+If the API returns unauthenticated responses, confirm `APP_URL` matches the local server URL and log in again so the SPA can refresh its session-scoped Sanctum token.

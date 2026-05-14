@@ -15,6 +15,7 @@ class WorkerSearchRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
+            'search' => ['nullable', 'string', 'max:120'],
             'service_id' => ['nullable', 'integer', Rule::exists('services', 'id')],
             'service_slug' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:120'],

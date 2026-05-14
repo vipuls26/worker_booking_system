@@ -1,11 +1,12 @@
 import http from '../http';
+import { withIdempotencyKey } from '../../lib/idempotency';
 
 export function listBookings(params = {}) {
     return http.get('/customer/bookings', { params });
 }
 
 export function createBooking(payload) {
-    return http.post('/customer/bookings', payload);
+    return http.post('/customer/bookings', payload, withIdempotencyKey('customer-booking-create'));
 }
 
 export function prepareBookAgain(id) {
@@ -17,19 +18,19 @@ export function getBooking(id) {
 }
 
 export function cancelBooking(id, payload = {}) {
-    return http.patch(`/customer/bookings/${id}/cancel`, payload);
+    return http.patch(`/customer/bookings/${id}/cancel`, payload, withIdempotencyKey(`customer-booking-cancel:${id}`));
 }
 
 export function rescheduleBooking(id, payload) {
-    return http.patch(`/customer/bookings/${id}/reschedule`, payload);
+    return http.patch(`/customer/bookings/${id}/reschedule`, payload, withIdempotencyKey(`customer-booking-reschedule:${id}`));
 }
 
 export function selectBookingWorker(id, payload) {
-    return http.patch(`/customer/bookings/${id}/select-worker`, payload);
+    return http.patch(`/customer/bookings/${id}/select-worker`, payload, withIdempotencyKey(`customer-booking-select:${id}`));
 }
 
 export function payBooking(id, payload = {}) {
-    return http.post(`/customer/bookings/${id}/pay`, payload);
+    return http.post(`/customer/bookings/${id}/pay`, payload, withIdempotencyKey(`customer-booking-pay:${id}`));
 }
 
 export function submitBookingReview(id, payload) {

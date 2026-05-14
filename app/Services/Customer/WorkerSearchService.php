@@ -8,6 +8,7 @@ use App\Services\Booking\BookingConflictService;
 use App\Services\Worker\AvailabilityCheckerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
@@ -53,6 +54,7 @@ class WorkerSearchService
                 ->where('approval_status', 'approved')
                 ->whereHas('service', fn ($query) => $query->where('is_active', true))]);
 
+        $this->applySearchFilter($query, $request);
         $this->applyServiceFilters($query, $request);
         $this->applyRatingFilter($query, $request);
         $this->applyCityFilter($query, $request);
@@ -103,6 +105,47 @@ class WorkerSearchService
         $worker->setAttribute('min_service_price', $worker->workerServices->min('price'));
 
         return $worker;
+    }
+
+    /**
+     * Apply the broad marketplace search term across worker, profile, and service data.
+     *
+     * @param  Builder<User>  $query
+     */
+    private function applySearchFilter(Builder $query, Request $request): void
+    {
+        // Search should help customers find workers by name, city, bio, skills, or service names.
+        if (! $request->filled('search')) {
+            return;
+        }
+
+        $searchTerm = $request->string('search')->trim()->toString();
+
+        $query->where(function (Builder $builder) use ($searchTerm): void {
+            $builder
+                ->where('users.name', 'like', "%{$searchTerm}%")
+                ->orWhereHas('workerProfile', function (Builder $profileQuery) use ($searchTerm): void {
+                    $profileQuery
+                        ->where('city', 'like', "%{$searchTerm}%")
+                        ->orWhere('bio', 'like', "%{$searchTerm}%")
+                        ->orWhereJsonContains('skills', $searchTerm);
+                })
+                ->orWhereHas('workerServices', function (Builder $serviceQuery) use ($searchTerm): void {
+                    $serviceQuery
+                        ->where('is_active', true)
+                        ->where('approval_status', 'approved')
+                        ->where(function (Builder $descriptionQuery) use ($searchTerm): void {
+                            $descriptionQuery
+                                ->where('description', 'like', "%{$searchTerm}%")
+                                ->orWhereHas('service', function (Builder $catalogQuery) use ($searchTerm): void {
+                                    $catalogQuery
+                                        ->where('name', 'like', "%{$searchTerm}%")
+                                        ->orWhere('slug', 'like', "%{$searchTerm}%")
+                                        ->orWhere('description', 'like', "%{$searchTerm}%");
+                                });
+                        });
+                });
+        });
     }
 
     private function applyServiceFilters($query, Request $request): void
@@ -198,13 +241,33 @@ class WorkerSearchService
 
     private function applySorting($query, Request $request): void
     {
-        match ($request->string('sort')->toString()) {
-            'price_high' => $query->orderByDesc('min_service_price'),
-            'rating' => $query->orderByDesc('rating_average'),
-            'experience' => $query->join('worker_profiles as sort_profiles', 'sort_profiles.user_id', '=', 'users.id')
-                ->orderByDesc('sort_profiles.experience_years'),
-            default => $query->orderBy('min_service_price')->latest('users.id'),
-        };
+        $sort = $request->string('sort')->toString();
+
+        // Customers expect pricing, rating, and experience sorts to be explicit and stable.
+        if ($sort === 'price_high') {
+            $query->orderByDesc('min_service_price')->latest('users.id');
+
+            return;
+        }
+
+        // Rating-first sorting should still keep new ties predictable.
+        if ($sort === 'rating') {
+            $query->orderByDesc('rating_average')->latest('users.id');
+
+            return;
+        }
+
+        // Experience sorting needs the worker profile join because the value lives outside users.
+        if ($sort === 'experience') {
+            $query
+                ->join('worker_profiles as sort_profiles', 'sort_profiles.user_id', '=', 'users.id')
+                ->orderByDesc('sort_profiles.experience_years')
+                ->latest('users.id');
+
+            return;
+        }
+
+        $query->orderBy('min_service_price')->latest('users.id');
     }
 
     /**

@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
 import * as authApi from '../api/auth';
+import {
+    clearStoredAuthSession,
+    getStoredAuthToken,
+    getStoredAuthUser,
+    setStoredAuthSession,
+    setStoredAuthUser,
+} from '../lib/authStorage';
 
 const dashboardByRole = {
     admin: '/admin/dashboard',
@@ -9,8 +16,8 @@ const dashboardByRole = {
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        user: JSON.parse(localStorage.getItem('auth_user') || 'null'),
-        token: localStorage.getItem('auth_token'),
+        user: getStoredAuthUser(),
+        token: getStoredAuthToken(),
         isBootstrapped: false,
     }),
 
@@ -29,18 +36,16 @@ export const useAuthStore = defineStore('auth', {
     },
 
     actions: {
-        setSession({ token, user }) {
+        setSession({ token, user, remember = false }) {
             this.token = token;
             this.user = user;
-            localStorage.setItem('auth_token', token);
-            localStorage.setItem('auth_user', JSON.stringify(user));
+            setStoredAuthSession(token, user, remember);
         },
 
         clearSession() {
             this.token = null;
             this.user = null;
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('auth_user');
+            clearStoredAuthSession();
         },
 
         async bootstrap() {
@@ -60,7 +65,7 @@ export const useAuthStore = defineStore('auth', {
 
         setUser(user) {
             this.user = user;
-            localStorage.setItem('auth_user', JSON.stringify(user));
+            setStoredAuthUser(user);
         },
 
         async refreshUser() {
@@ -86,14 +91,14 @@ export const useAuthStore = defineStore('auth', {
 
         async register(payload) {
             const response = await authApi.register(payload);
-            this.setSession(response.data.data);
+            this.setSession({ ...response.data.data, remember: false });
 
             return response.data;
         },
 
         async login(payload) {
             const response = await authApi.login(payload);
-            this.setSession(response.data.data);
+            this.setSession({ ...response.data.data, remember: Boolean(payload.remember) });
 
             return response.data;
         },

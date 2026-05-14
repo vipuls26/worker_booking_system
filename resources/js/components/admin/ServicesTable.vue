@@ -85,11 +85,11 @@ defineEmits(['edit', 'delete', 'toggle']);
             <table class="min-w-full divide-y divide-gray-200 dark:divide-white/10">
                 <thead class="bg-gray-50 dark:bg-gray-950">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Service</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Icon</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Created By</th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Actions</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Service</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Icon</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Status</th>
+                        <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Created By</th>
+                        <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 lg:px-4 lg:py-3">Actions</th>
                     </tr>
                 </thead>
 
@@ -97,33 +97,33 @@ defineEmits(['edit', 'delete', 'toggle']);
                     <SkeletonTableRows v-if="loading" :columns="4" />
 
                     <tr v-else-if="services.length === 0">
-                        <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        <td colspan="5" class="px-3 py-10 text-center text-sm text-gray-500 dark:text-gray-400 lg:px-4">
                             No service categories found.
                         </td>
                     </tr>
 
                     <template v-else>
                         <tr v-for="service in services" :key="service.id" class="transition hover:bg-gray-50 dark:hover:bg-white/5">
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <p class="font-medium text-gray-900 dark:text-white">{{ service.name }}</p>
                                 <p class="text-sm text-gray-500 dark:text-gray-400">{{ service.slug }}</p>
                                 <p v-if="service.description" class="mt-1 max-w-md truncate text-sm text-gray-500 dark:text-gray-400">
                                     {{ service.description }}
                                 </p>
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <span class="inline-flex size-9 items-center justify-center rounded-md bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200">
                                     <i :class="['pi', service.icon || 'pi-briefcase']" aria-hidden="true"></i>
                                 </span>
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
                                 <StatusBadge :value="service.is_active" />
                             </td>
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                            <td class="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300 lg:px-4 lg:py-3">
                                 {{ service.creator?.name || 'System' }}
                             </td>
-                            <td class="px-4 py-3">
-                                <div class="flex justify-end gap-2">
+                            <td class="px-3 py-2.5 lg:px-4 lg:py-3">
+                                <div class="flex justify-end gap-1.5 lg:gap-2">
                                     <button
                                         type="button"
                                         class="inline-flex size-9 items-center justify-center rounded-md border border-gray-300 text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"

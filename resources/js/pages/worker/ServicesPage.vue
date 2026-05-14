@@ -38,6 +38,7 @@ async function silentRefresh() {
 
 useDebouncedWatch(
     () => [
+        workerServicesStore.filters.search,
         workerServicesStore.filters.pricing_type,
         workerServicesStore.filters.status,
         workerServicesStore.filters.approval_status,
@@ -127,7 +128,7 @@ onBeforeUnmount(() => {
 
 <template>
     <DashboardLayout title="Worker Services">
-        <div class="space-y-5">
+        <div class="space-y-5" data-testid="worker-services-page">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">My services</h2>
@@ -135,6 +136,7 @@ onBeforeUnmount(() => {
                 </div>
                 <button
                     type="button"
+                    data-testid="worker-service-open-create"
                     class="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
                     @click="openCreateModal"
                 >
@@ -144,7 +146,7 @@ onBeforeUnmount(() => {
             </div>
 
             <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-white/10">
-                <div class="grid gap-3 lg:grid-cols-[1fr_180px_180px]">
+                <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_170px_170px]">
                     <SearchFilter v-model="workerServicesStore.filters.search" placeholder="Search services" @search="load()" />
                     <select
                         v-model="workerServicesStore.filters.pricing_type"
@@ -163,7 +165,7 @@ onBeforeUnmount(() => {
                         <option value="inactive" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Inactive</option>
                     </select>
                 </div>
-                <div class="mt-3 max-w-xs">
+                <div class="mt-3 max-w-full xl:max-w-xs">
                     <select
                         v-model="workerServicesStore.filters.approval_status"
                         class="block w-full rounded-md border-gray-300 bg-white text-sm text-gray-900 shadow-sm [color-scheme:light] focus:border-gray-900 focus:ring-gray-900 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] dark:focus:border-white dark:focus:ring-white"

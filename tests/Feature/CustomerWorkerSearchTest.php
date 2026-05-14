@@ -52,6 +52,52 @@ class CustomerWorkerSearchTest extends TestCase
             ->assertJsonPath('data.workers.0.services.0.service.name', 'AC Repair');
     }
 
+    public function test_customer_can_search_workers_by_name_service_and_skill(): void
+    {
+        Sanctum::actingAs($this->customerUser());
+
+        $service = Service::factory()->create(['name' => 'Deep Cleaning', 'slug' => 'deep-cleaning']);
+        $matchingWorker = $this->workerUser();
+        $otherWorker = $this->workerUser();
+
+        WorkerProfile::factory()->create([
+            'user_id' => $matchingWorker->id,
+            'city' => 'Pune',
+            'bio' => 'Expert cleaner for family homes.',
+            'skills' => ['kitchen deep clean', 'sofa shampoo'],
+            'is_verified' => true,
+        ]);
+
+        WorkerProfile::factory()->create([
+            'user_id' => $otherWorker->id,
+            'city' => 'Delhi',
+            'bio' => 'General home maintenance support.',
+            'skills' => ['plumbing'],
+            'is_verified' => true,
+        ]);
+
+        WorkerService::factory()->create([
+            'worker_id' => $matchingWorker->id,
+            'service_id' => $service->id,
+            'description' => 'Deep cleaning for kitchens and living rooms.',
+            'is_active' => true,
+            'approval_status' => WorkerService::StatusApproved,
+        ]);
+
+        WorkerService::factory()->create([
+            'worker_id' => $otherWorker->id,
+            'service_id' => $service->id,
+            'description' => 'Regular cleaning only.',
+            'is_active' => true,
+            'approval_status' => WorkerService::StatusApproved,
+        ]);
+
+        $this->getJson('/api/customer/workers?search=sofa')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.workers')
+            ->assertJsonPath('data.workers.0.id', $matchingWorker->id);
+    }
+
     public function test_customer_search_hides_worker_with_blocking_booking_from_another_service(): void
     {
         Sanctum::actingAs($this->customerUser());

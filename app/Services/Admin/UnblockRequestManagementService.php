@@ -17,9 +17,24 @@ class UnblockRequestManagementService
 
     public function paginate(Request $request): LengthAwarePaginator
     {
+        $search = $request->string('search')->trim()->toString();
+
         // Admins need unblock requests with user and reviewer context for account safety decisions.
         return UnblockRequest::query()
             ->with(['user.role', 'reviewer.role'])
+            ->when($search !== '', function ($query) use ($search): void {
+                // Search by account identity and appeal notes so admins can reopen the right case quickly.
+                $query->where(function ($query) use ($search): void {
+                    $query
+                        ->where('reason', 'like', "%{$search}%")
+                        ->orWhere('admin_note', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($userQuery) use ($search): void {
+                            $userQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->latest()
             ->paginate($request->integer('per_page', 15));
@@ -65,7 +80,7 @@ class UnblockRequestManagementService
                 'reviewed_at' => now(),
             ]);
 
-            // Partial blocks return straight to active, while full blocks move into a reverification-only restricted state.
+            // Approving an unblock request should fully restore account access without extra admin steps.
             if ($status === UnblockRequest::STATUS_APPROVED) {
                 if ($blockedUser->isPartiallyBlocked()) {
                     $blockedUser->update([
@@ -74,7 +89,7 @@ class UnblockRequestManagementService
                     ]);
                 } elseif ($blockedUser->isFullyBlocked()) {
                     $blockedUser->update([
-                        'account_status' => User::STATUS_PARTIALLY_BLOCKED,
+                        'account_status' => User::STATUS_ACTIVE,
                         'is_blocked' => false,
                     ]);
                 }

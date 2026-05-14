@@ -167,6 +167,28 @@ class WorkerServicesTest extends TestCase
         $this->assertDatabaseMissing('worker_services', ['id' => $workerService->id]);
     }
 
+    public function test_worker_service_filters_allow_blank_active_status_value(): void
+    {
+        Sanctum::actingAs($worker = $this->workerUser());
+
+        $service = Service::factory()->create([
+            'name' => 'Painter',
+            'slug' => 'painter',
+            'is_active' => true,
+        ]);
+
+        $workerService = WorkerService::factory()->create([
+            'worker_id' => $worker->id,
+            'service_id' => $service->id,
+            'is_active' => true,
+        ]);
+
+        $this->getJson('/api/worker/services?is_active=')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.worker_services.0.id', $workerService->id);
+    }
+
     public function test_hourly_pricing_requires_minimum_hours(): void
     {
         Sanctum::actingAs($this->workerUser());

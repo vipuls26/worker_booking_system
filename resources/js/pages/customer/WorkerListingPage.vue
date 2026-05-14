@@ -9,11 +9,16 @@ import WorkerCard from '../../components/customer/WorkerCard.vue';
 import FormInput from '../../components/forms/FormInput.vue';
 import FormSelect from '../../components/forms/FormSelect.vue';
 import FormTextarea from '../../components/forms/FormTextarea.vue';
+import SearchFilter from '../../components/forms/SearchFilter.vue';
 import { useApiErrors } from '../../composables/useApiErrors';
 import { useDebouncedWatch } from '../../composables/useDebouncedWatch';
+import { useYupValidation } from '../../composables/useYupValidation';
 import DashboardLayout from '../../layouts/DashboardLayout.vue';
+import { useAuthStore } from '../../stores/auth';
 import { useCustomerBookingsStore } from '../../stores/customer/bookings';
 import { useCustomerWorkersStore } from '../../stores/customer/workers';
+import { bookingRequestSchema } from '../../validation/bookingSchemas';
+import { currentLocalLatestBookingDateString } from '../../validation/shared';
 
 function localDateString() {
     const today = new Date();
@@ -43,13 +48,11 @@ const router = useRouter();
 const route = useRoute();
 const workersStore = useCustomerWorkersStore();
 const bookingsStore = useCustomerBookingsStore();
+const authStore = useAuthStore();
 const { errors, setApiError, clearApiErrors } = useApiErrors();
+const { validationErrors, clearValidationErrors, validateWithSchema } = useYupValidation(bookingRequestSchema);
 const showAdvancedFilters = ref(false);
 const filtersReady = ref(false);
-const frontendErrors = reactive({
-    booking_date: [],
-    start_time: [],
-});
 
 const requestForm = reactive({
     service_id: '',
@@ -61,8 +64,10 @@ const requestForm = reactive({
     issue_description: '',
 });
 
+const savedAddress = computed(() => authStore.user?.address || '');
 const canSendRequest = computed(() => requestForm.service_id && requestForm.booking_date && requestForm.start_time && requestForm.duration_minutes && requestForm.address && requestForm.issue_description);
 const minimumBookingDate = computed(() => localDateString());
+const maximumBookingDate = computed(() => currentLocalLatestBookingDateString());
 const minimumBookingTime = computed(() => requestForm.booking_date === minimumBookingDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
 const minimumAvailableDate = computed(() => localDateString());
 const minimumAvailableTime = computed(() => workersStore.filters.available_date === minimumAvailableDate.value ? roundTimeUpToFiveMinutes(localTimeString()) : '');
@@ -77,6 +82,24 @@ const requestSlotLabel = computed(() => {
 
     return `${requestForm.start_time} - ${requestForm.end_time}`;
 });
+const requestSummaryRows = computed(() => [
+    {
+        label: 'Service',
+        value: requestService.value?.name || 'Choose a service',
+    },
+    {
+        label: 'Visit date',
+        value: requestForm.booking_date || 'Choose a date',
+    },
+    {
+        label: 'Visit window',
+        value: requestSlotLabel.value,
+    },
+    {
+        label: 'Duration',
+        value: `${Number(requestForm.duration_minutes || 0) / 60 || 0} ${Number(requestForm.duration_minutes || 0) === 60 ? 'hour' : 'hours'}`,
+    },
+]);
 const durationOptions = [
     { id: 60, name: '1 hour' },
     { id: 120, name: '2 hours' },
@@ -90,6 +113,10 @@ const dateShortcuts = computed(() => [
 ]);
 const activeFilterLabels = computed(() => {
     const labels = [];
+
+    if (workersStore.filters.search) {
+        labels.push(`"${workersStore.filters.search}"`);
+    }
 
     if (selectedService.value) {
         labels.push(selectedService.value.name);
@@ -165,6 +192,7 @@ function applyQuickFilter(filter) {
 }
 
 function resetFilters() {
+    workersStore.filters.search = '';
     workersStore.filters.service_id = '';
     workersStore.filters.min_rating = '';
     workersStore.filters.max_price = '';
@@ -177,6 +205,15 @@ function resetFilters() {
     requestForm.duration_minutes = 120;
     requestForm.start_time = '';
     requestForm.end_time = '';
+    requestForm.address = savedAddress.value;
+}
+
+function applySavedAddressToRequestForm() {
+    if (! savedAddress.value || requestForm.address) {
+        return;
+    }
+
+    requestForm.address = savedAddress.value;
 }
 
 function dateValueFromNow(days) {
@@ -194,7 +231,8 @@ function selectDate(value) {
 
 function selectTimeSlot(slot) {
     if (minimumBookingTime.value && slot.start < minimumBookingTime.value) {
-        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+        clearValidationErrors();
+        validateWithSchema(requestForm);
 
         return;
     }
@@ -219,7 +257,8 @@ function adjustRequestStartTime(minutes) {
     const adjustedTime = addMinutes(requestForm.start_time, minutes);
 
     if (minimumBookingTime.value && adjustedTime < minimumBookingTime.value) {
-        frontendErrors.start_time = ['Please choose the current time or a future time.'];
+        clearValidationErrors();
+        validateWithSchema(requestForm);
 
         return;
     }
@@ -257,7 +296,7 @@ function minutesBetween(start, end) {
 }
 
 function applyRouteFilters() {
-    const allowedFilters = ['service_id', 'city', 'max_price', 'min_rating', 'sort'];
+    const allowedFilters = ['search', 'service_id', 'city', 'max_price', 'min_rating', 'sort'];
 
     allowedFilters.forEach((key) => {
         if (route.query[key] !== undefined) {
@@ -267,36 +306,47 @@ function applyRouteFilters() {
 }
 
 function clearFrontendErrors() {
-    frontendErrors.booking_date = [];
-    frontendErrors.start_time = [];
+    clearValidationErrors();
 }
 
-function validateRequestSchedule() {
+function syncFiltersToRoute() {
+    const nextQuery = {
+        ...(workersStore.filters.search ? { search: workersStore.filters.search } : {}),
+        ...(workersStore.filters.service_id ? { service_id: workersStore.filters.service_id } : {}),
+        ...(workersStore.filters.city ? { city: workersStore.filters.city } : {}),
+        ...(workersStore.filters.max_price ? { max_price: workersStore.filters.max_price } : {}),
+        ...(workersStore.filters.min_rating ? { min_rating: workersStore.filters.min_rating } : {}),
+        ...(workersStore.filters.sort && workersStore.filters.sort !== 'relevance' ? { sort: workersStore.filters.sort } : {}),
+    };
+
+    router.replace({
+        path: route.path,
+        query: nextQuery,
+    });
+}
+
+async function validateRequestSchedule() {
     clearFrontendErrors();
 
-    // Customers should not be able to choose a day that has already passed.
-    if (requestForm.booking_date && requestForm.booking_date < minimumBookingDate.value) {
-        frontendErrors.booking_date = ['Please choose today or a future date.'];
+    return validateWithSchema(requestForm);
+}
 
-        return false;
-    }
-
-    // Same-day requests must start now or later so workers are not asked for expired slots.
-    if (requestForm.booking_date === minimumBookingDate.value && requestForm.start_time && requestForm.start_time < minimumBookingTime.value) {
-        frontendErrors.start_time = ['Please choose the current time or a future time.'];
-
-        return false;
-    }
-
-    return true;
+async function validateRequestForm() {
+    return validateRequestSchedule();
 }
 
 async function sendRequest() {
+    if (bookingsStore.saving) {
+        return;
+    }
+
     clearApiErrors();
     clearFrontendErrors();
     syncRequestEndTime();
 
-    if (! validateRequestSchedule()) {
+    if (! await validateRequestForm()) {
+        toast.error('Please fix the highlighted booking request fields.');
+
         return;
     }
 
@@ -313,6 +363,7 @@ async function sendRequest() {
 
 useDebouncedWatch(
     () => [
+        workersStore.filters.search,
         workersStore.filters.service_id,
         workersStore.filters.min_rating,
         workersStore.filters.max_price,
@@ -324,6 +375,7 @@ useDebouncedWatch(
     ],
     () => {
         if (filtersReady.value) {
+            syncFiltersToRoute();
             load();
         }
     },
@@ -340,6 +392,7 @@ watch(
     () => requestForm.service_id,
     (serviceId) => {
         workersStore.filters.service_id = serviceId || '';
+        clearValidationErrors('service_id');
     },
 );
 
@@ -365,12 +418,13 @@ watch(
     () => requestForm.booking_date,
     (bookingDate) => {
         workersStore.filters.available_date = bookingDate || '';
-        frontendErrors.booking_date = [];
+        clearValidationErrors('booking_date');
 
         if (bookingDate === minimumBookingDate.value && requestForm.start_time && requestForm.start_time < minimumBookingTime.value) {
             requestForm.start_time = '';
             requestForm.end_time = '';
-            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+            clearValidationErrors();
+            validateWithSchema(requestForm);
         }
     },
 );
@@ -379,7 +433,7 @@ watch(
     () => requestForm.start_time,
     (startTime) => {
         if (! startTime) {
-            frontendErrors.start_time = [];
+            clearValidationErrors('start_time');
 
             return;
         }
@@ -387,13 +441,28 @@ watch(
         if (requestForm.booking_date === minimumBookingDate.value && startTime < minimumBookingTime.value) {
             requestForm.start_time = '';
             requestForm.end_time = '';
-            frontendErrors.start_time = ['Please choose the current time or a future time.'];
+            clearValidationErrors();
+            validateWithSchema(requestForm);
 
             return;
         }
 
-        frontendErrors.start_time = [];
+        clearValidationErrors('start_time');
         syncRequestEndTime();
+    },
+);
+
+watch(
+    () => requestForm.address,
+    () => {
+        clearValidationErrors('address');
+    },
+);
+
+watch(
+    () => requestForm.issue_description,
+    () => {
+        clearValidationErrors('issue_description');
     },
 );
 
@@ -408,9 +477,12 @@ onMounted(async () => {
     applyRouteFilters();
 
     await Promise.all([
+        authStore.refreshUser(),
         workersStore.fetchOptions(),
         load(),
     ]);
+
+    applySavedAddressToRequestForm();
 
     filtersReady.value = true;
 });
@@ -418,7 +490,7 @@ onMounted(async () => {
 
 <template>
     <DashboardLayout title="Find Workers">
-        <div class="space-y-4 sm:space-y-5">
+        <div class="space-y-4 sm:space-y-5" data-testid="worker-listing-page">
             <Transition appear enter-active-class="fade-up-enter-active" enter-from-class="fade-up-enter-from" enter-to-class="fade-up-enter-to">
                 <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-slate-900 dark:shadow-none">
                 <div class="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.10),_transparent_48%),linear-gradient(to_bottom,_rgba(248,250,252,1),_rgba(255,255,255,1))] p-4 dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_48%),linear-gradient(to_bottom,_rgba(15,23,42,0.9),_rgba(15,23,42,1))] sm:p-5">
@@ -428,9 +500,10 @@ onMounted(async () => {
                             <h2 class="mt-1 text-lg font-semibold tracking-tight text-slate-900 dark:text-white sm:text-2xl">Pick a service and refine only when needed.</h2>
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">Browse verified local workers, narrow by city or budget, and send one request that matches the job window you need.</p>
                         </div>
-                        <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
+                        <div class="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:flex sm:flex-row">
                             <button
                                 type="button"
+                                data-testid="worker-listing-toggle-filters"
                                 class="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                                 @click="showAdvancedFilters = !showAdvancedFilters"
                             >
@@ -447,13 +520,21 @@ onMounted(async () => {
                         <span v-for="label in activeFilterLabels" :key="label" class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
                             {{ label }}
                         </span>
-                        <button type="button" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10" @click="resetFilters">
+                        <button type="button" data-testid="worker-listing-clear-filters" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10" @click="resetFilters">
                             Clear
                         </button>
                     </div>
                 </div>
 
                 <div class="p-4 sm:p-5">
+                    <div class="mb-4">
+                        <SearchFilter
+                            v-model="workersStore.filters.search"
+                            placeholder="Search by worker, service, city, or skill"
+                            @search="load()"
+                        />
+                    </div>
+
                     <div class="grid grid-cols-2 gap-2 sm:flex sm:gap-3 sm:overflow-x-auto sm:pb-1">
                         <button
                             v-for="service in workersStore.serviceOptions.slice(0, 8)"
@@ -480,7 +561,7 @@ onMounted(async () => {
                         </button>
                     </div>
 
-                    <div class="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    <div class="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap">
                         <button
                             v-for="filter in quickFilters"
                             :key="filter.label"
@@ -503,6 +584,7 @@ onMounted(async () => {
                             </span>
                             <input
                                 v-model="workersStore.filters.city"
+                                data-testid="worker-listing-city-filter"
                                 type="text"
                                 class="mt-3 block w-full border-0 bg-transparent p-0 text-base font-semibold text-gray-900 placeholder:text-gray-400 focus:ring-0 dark:text-white dark:placeholder:text-gray-600 sm:text-lg"
                                 placeholder="Search by city"
@@ -517,6 +599,7 @@ onMounted(async () => {
                             </span>
                             <input
                                 v-model="workersStore.filters.max_price"
+                                data-testid="worker-listing-max-price-filter"
                                 type="number"
                                 min="1"
                                 class="mt-3 block w-full border-0 bg-transparent p-0 text-base font-semibold text-gray-900 placeholder:text-gray-400 focus:ring-0 dark:text-white dark:placeholder:text-gray-600 sm:text-lg"
@@ -532,6 +615,7 @@ onMounted(async () => {
                             </span>
                             <select
                                 v-model="workersStore.filters.min_rating"
+                                data-testid="worker-listing-rating-filter"
                                 class="mt-3 block w-full border-0 bg-white p-0 text-base font-semibold text-gray-900 [color-scheme:light] focus:ring-0 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark] sm:text-lg"
                             >
                                 <option value="" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">Any</option>
@@ -545,19 +629,19 @@ onMounted(async () => {
                     <div class="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_180px_220px]">
                         <label class="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:p-4">
                             <span class="text-sm font-semibold text-gray-900 dark:text-white">Available date</span>
-                            <input v-model="workersStore.filters.available_date" type="date" :min="minimumAvailableDate" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 dark:text-white">
+                            <input v-model="workersStore.filters.available_date" data-testid="worker-listing-date-filter" type="date" :min="minimumAvailableDate" :max="maximumBookingDate" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 dark:text-white">
                         </label>
 
                         <label class="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:p-4">
                             <span class="text-sm font-semibold text-gray-900 dark:text-white">Available time</span>
-                            <input :key="availableTimeInputKey" v-model="workersStore.filters.available_time" type="time" :min="minimumAvailableTime" :disabled="!workersStore.filters.available_date" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-white dark:disabled:text-gray-500">
+                            <input :key="availableTimeInputKey" v-model="workersStore.filters.available_time" data-testid="worker-listing-time-filter" type="time" :min="minimumAvailableTime" :disabled="!workersStore.filters.available_date" class="mt-3 block w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 focus:ring-0 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-white dark:disabled:text-gray-500">
                         </label>
 
                         <FormSelect id="worker_search_duration" v-model="workersStore.filters.slot_minutes" label="Duration" :options="durationOptions" />
 
                         <label class="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:p-4">
                             <span class="text-sm font-semibold text-gray-900 dark:text-white">Sort</span>
-                            <select v-model="workersStore.filters.sort" class="mt-3 block w-full border-0 bg-white p-0 text-sm font-semibold text-gray-900 [color-scheme:light] focus:ring-0 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark]">
+                            <select v-model="workersStore.filters.sort" data-testid="worker-listing-sort-filter" class="mt-3 block w-full border-0 bg-white p-0 text-sm font-semibold text-gray-900 [color-scheme:light] focus:ring-0 dark:bg-gray-950 dark:text-white dark:[color-scheme:dark]">
                                 <option v-for="option in sortOptions" :key="option.value" :value="option.value" class="bg-white text-gray-900 dark:bg-gray-950 dark:text-white">{{ option.label }}</option>
                             </select>
                         </label>
@@ -590,7 +674,14 @@ onMounted(async () => {
                             </div>
                         </div>
                         <div class="mt-4">
-                            <FormSelect id="request_service_id" v-model="requestForm.service_id" label="Service" :options="workersStore.serviceOptions" placeholder="Select service" :error="errors.service_id" />
+                            <FormSelect
+                                id="request_service_id"
+                                v-model="requestForm.service_id"
+                                label="Service"
+                                :options="workersStore.serviceOptions"
+                                placeholder="Select service"
+                                :error="validationErrors.service_id?.length ? validationErrors.service_id : (errors.service_id || [])"
+                            />
                         </div>
                     </div>
 
@@ -619,8 +710,8 @@ onMounted(async () => {
                         </div>
 
                         <div class="mt-4 grid gap-4 md:grid-cols-2">
-                            <FormInput id="request_booking_date" v-model="requestForm.booking_date" label="Date" type="date" :min="minimumBookingDate" :error="frontendErrors.booking_date.length ? frontendErrors.booking_date : errors.booking_date" />
-                            <FormInput :key="requestStartTimeInputKey" id="request_start_time" v-model="requestForm.start_time" label="Start time" type="time" :min="minimumBookingTime" :disabled="!requestForm.booking_date" step="300" :error="frontendErrors.start_time.length ? frontendErrors.start_time : errors.start_time" />
+                            <FormInput id="request_booking_date" v-model="requestForm.booking_date" label="Date" type="date" :min="minimumBookingDate" :max="maximumBookingDate" :error="validationErrors.booking_date?.length ? validationErrors.booking_date : (errors.booking_date || [])" />
+                            <FormInput :key="requestStartTimeInputKey" id="request_start_time" v-model="requestForm.start_time" label="Start time" type="time" :min="minimumBookingTime" :disabled="!requestForm.booking_date" step="300" :error="validationErrors.start_time?.length ? validationErrors.start_time : (errors.start_time || [])" />
                         </div>
 
                         <div class="mt-3">
@@ -643,7 +734,7 @@ onMounted(async () => {
 
                         <div class="mt-4">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Duration</p>
-                            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div class="mt-2 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:grid-cols-4">
                                 <button
                                     v-for="option in durationOptions"
                                     :key="option.id"
@@ -661,7 +752,7 @@ onMounted(async () => {
 
                         <div class="mt-4">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Popular slots</p>
-                            <div class="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                            <div class="mt-2 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap">
                                 <button
                                     v-for="slot in visibleTimeShortcuts"
                                     :key="slot.label"
@@ -706,17 +797,30 @@ onMounted(async () => {
                         </div>
 
                         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-                            <FormInput id="request_address" v-model="requestForm.address" label="Address" :error="errors.address" />
-                            <FormTextarea id="request_issue_description" v-model="requestForm.issue_description" label="Issue description" rows="3" placeholder="Example: AC is not cooling properly." :error="errors.issue_description" />
+                            <FormInput id="request_address" v-model="requestForm.address" label="Address" :error="validationErrors.address?.length ? validationErrors.address : (errors.address || [])" />
+                            <FormTextarea id="request_issue_description" v-model="requestForm.issue_description" label="Issue description" rows="3" placeholder="Example: AC is not cooling properly." :error="validationErrors.issue_description?.length ? validationErrors.issue_description : (errors.issue_description || [])" />
                         </div>
                     </div>
 
                     <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                        <div>
+                        <div class="flex-1">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">
                                 {{ requestService ? requestService.name : 'Select a service to start' }}
                             </p>
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This request goes to multiple matching workers. You choose after they accept.</p>
+                            <div class="mt-3 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                                <div
+                                    v-for="row in requestSummaryRows"
+                                    :key="row.label"
+                                    class="rounded-md bg-gray-50 px-3 py-2 dark:bg-white/5"
+                                >
+                                    <p class="font-semibold text-gray-500 dark:text-gray-400">{{ row.label }}</p>
+                                    <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ row.value }}</p>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-amber-700 dark:text-amber-200">
+                                You can cancel while the request is still open. If work is completed and already paid, refund decisions may need admin review.
+                            </p>
                         </div>
                         <div class="sm:w-56">
                             <AppButton type="submit" icon="pi-send" :loading="bookingsStore.saving" :disabled="!canSendRequest">Find matching workers</AppButton>
@@ -733,7 +837,8 @@ onMounted(async () => {
                     </div>
 
                     <div v-else-if="workersStore.workers.length === 0" class="rounded-lg bg-white p-8 text-center text-sm text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-white/10">
-                        No workers matched your filters.
+                        <p class="font-semibold text-gray-900 dark:text-white">No workers matched your filters.</p>
+                        <p class="mt-2">Try a different city, lower minimum rating, remove the date filter, or widen the time window.</p>
                     </div>
 
                     <div v-else class="grid gap-4 lg:grid-cols-2">

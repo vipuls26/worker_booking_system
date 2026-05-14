@@ -1,13 +1,17 @@
 <script setup>
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import AppButton from '../components/common/AppButton.vue';
 import ThemeToggle from '../components/common/ThemeToggle.vue';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
+const router = useRouter();
 const sending = ref(false);
+const checkingVerification = ref(false);
+let verificationPollingWindow = null;
 
 async function resend() {
     sending.value = true;
@@ -21,6 +25,61 @@ async function resend() {
         sending.value = false;
     }
 }
+
+async function checkVerificationStatus() {
+    if (! authStore.isAuthenticated || checkingVerification.value || authStore.isEmailVerified) {
+        return;
+    }
+
+    checkingVerification.value = true;
+
+    try {
+        await authStore.refreshUser();
+
+        if (authStore.isEmailVerified) {
+            stopVerificationPolling();
+            toast.success('Email verified successfully');
+            await router.replace(authStore.dashboardPath);
+        }
+    } catch {
+        // Ignore temporary refresh failures and let the next poll try again.
+    } finally {
+        checkingVerification.value = false;
+    }
+}
+
+function startVerificationPolling() {
+    if (! authStore.isAuthenticated || authStore.isEmailVerified || verificationPollingWindow !== null) {
+        return;
+    }
+
+    verificationPollingWindow = window.setInterval(() => {
+        void checkVerificationStatus();
+    }, 4000);
+}
+
+function stopVerificationPolling() {
+    if (verificationPollingWindow === null) {
+        return;
+    }
+
+    window.clearInterval(verificationPollingWindow);
+    verificationPollingWindow = null;
+}
+
+onMounted(() => {
+    if (authStore.isEmailVerified) {
+        void router.replace(authStore.dashboardPath);
+        return;
+    }
+
+    startVerificationPolling();
+    void checkVerificationStatus();
+});
+
+onUnmounted(() => {
+    stopVerificationPolling();
+});
 </script>
 
 <template>

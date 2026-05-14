@@ -77,7 +77,7 @@ class UserManagementService
     }
 
     /**
-     * Apply a full block and reset trust checks that require reverification later.
+     * Apply a full block and remove platform access until an admin restores the account.
      */
     public function fullBlock(User $user): User
     {
@@ -89,8 +89,6 @@ class UserManagementService
             $user->forceFill([
                 'account_status' => User::STATUS_FULLY_BLOCKED,
                 'is_blocked' => true,
-                'is_verified' => false,
-                'email_verified_at' => null,
             ])->save();
 
             $bookingCancellationSummary = [
@@ -98,18 +96,12 @@ class UserManagementService
                 'refund_review_count' => 0,
             ];
 
-            // Full blocks remove worker verification because the trust review must restart.
+            // Full blocks pause worker operations, but the original approval state should stay intact.
             if ($user->loadMissing('role')->hasRole('worker')) {
-                $user->workerProfile()->updateOrCreate(['user_id' => $user->id], [
-                    'is_verified' => false,
-                ]);
-
                 $bookingCancellationSummary = $this->cancelFutureWorkerBookings($user, $admin);
             }
 
             $this->audit->record('admin.user_fully_blocked', $admin, $user, [
-                'email_verification_reset' => true,
-                'admin_approval_reset' => true,
                 'future_bookings_cancelled' => $bookingCancellationSummary['cancelled_count'],
                 'refund_reviews_required' => $bookingCancellationSummary['refund_review_count'],
             ]);

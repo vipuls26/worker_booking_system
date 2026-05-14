@@ -3,11 +3,11 @@ import * as workerServicesApi from '../../api/worker/services';
 
 function activeParam(value) {
     if (value === 'active') {
-        return true;
+        return 1;
     }
 
     if (value === 'inactive') {
-        return false;
+        return 0;
     }
 
     return undefined;
@@ -38,10 +38,11 @@ export const useWorkerServicesStore = defineStore('workerServices', {
             }
 
             try {
+                const activeStatusFilter = activeParam(this.filters.status);
                 const response = await workerServicesApi.listWorkerServices({
                     search: this.filters.search || undefined,
                     pricing_type: this.filters.pricing_type || undefined,
-                    is_active: activeParam(this.filters.status),
+                    ...(activeStatusFilter !== undefined ? { is_active: activeStatusFilter } : {}),
                     approval_status: this.filters.approval_status || undefined,
                     per_page: this.filters.per_page,
                     page,

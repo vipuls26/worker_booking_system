@@ -83,17 +83,27 @@ export const useRealtimeStore = defineStore('realtime', {
             disconnectEcho();
         },
 
-        handleNotification(notification, role) {
+        async handleNotification(notification, role) {
             const eventName = notification.event || notification.data?.event;
 
             if (! eventName) {
                 return;
             }
 
+            const authStore = useAuthStore();
+
             const toastMessage = notification.message || notification.data?.message;
 
             if (toastMessage) {
                 toast.success(toastMessage);
+            }
+
+            if (['unblock_request_approved', 'unblock_request_rejected'].includes(eventName)) {
+                try {
+                    await authStore.refreshUser();
+                } catch {
+                    // Keep the notification visible even if the auth refresh fails temporarily.
+                }
             }
 
             if (role === 'worker' && ['service_request_received', 'service_request_cancelled'].includes(eventName)) {
@@ -107,6 +117,7 @@ export const useRealtimeStore = defineStore('realtime', {
             if (role === 'customer' && [
                 'service_request_accepted',
                 'service_request_rejected',
+                'service_request_unavailable',
                 'service_request_awaiting_reschedule',
                 'booking_accepted',
                 'booking_rejected',

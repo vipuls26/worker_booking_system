@@ -37,6 +37,7 @@ class WorkerVerificationManagementService
     public function paginate(Request $request): LengthAwarePaginator
     {
         $perPage = $request->integer('per_page', self::DefaultPerPage);
+        $search = $request->string('search')->trim()->toString();
         $requestedStatus = $request->string('status')->toString();
 
         // Get worker verification records only, because admins should not review customer or admin accounts here.
@@ -55,6 +56,19 @@ class WorkerVerificationManagementService
                 'verifier.role',
             ])
             ->whereHas('user.role', fn ($query) => $query->where('slug', 'worker'));
+
+        // Search is limited to worker identity and review notes so admins can quickly find one verification packet.
+        if ($search !== '') {
+            $verificationQuery->where(function (Builder $query) use ($search): void {
+                $query
+                    ->where('rejection_reason', 'like', "%{$search}%")
+                    ->orWhereHas('user', function (Builder $userQuery) use ($search): void {
+                        $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
 
         // Apply the status filter only when admins intentionally narrow the review list.
         if ($request->filled('status')) {

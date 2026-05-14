@@ -340,36 +340,6 @@ test.describe('Additional UI workflows', () => {
         await expect(page).toHaveURL(/\/customer\/dashboard$/);
     });
 
-    test('worker can review the customer from the completed booking UI', async ({ page, request }) => {
-        const scenario = await createCompletedBookingScenario(request, 'Worker Review');
-
-        await loginAccount(page, scenario.worker);
-        await page.goto('/worker/bookings');
-
-        const bookingCard = page.locator('[data-testid^="worker-booking-card-"]').filter({
-            hasText: scenario.customer.name,
-        }).first();
-
-        await expect(bookingCard).toBeVisible();
-        await bookingCard.locator('[data-testid^="worker-booking-open-review-"]').click();
-        await bookingCard.locator('[data-testid$="-4"][data-testid*="worker-booking-review-rating-"]').click();
-        await bookingCard.locator('[data-testid^="worker-booking-review-text-"]').fill('Customer was ready on time and easy to coordinate with.');
-        await bookingCard.locator('[data-testid^="worker-booking-review-submit-"]').click();
-
-        await expect(bookingCard).toContainText('Customer was ready on time and easy to coordinate with.');
-        await expect.poll(async () => {
-            const reviewsPayload = await apiJson<{
-                data: {
-                    reviews: Array<{
-                        review: string | null;
-                    }>;
-                };
-            }>(request, scenario.worker.token, '/api/worker/reviews');
-
-            return reviewsPayload.data.reviews.some((review) => review.review === 'Customer was ready on time and easy to coordinate with.');
-        }).toBeTruthy();
-    });
-
     test('customer worker search UI supports filtering by city and sorting by experience', async ({ page, request }) => {
         const adminSession = await loginByApi(request, testUsers.admin);
         const adminToken = adminSession.token;

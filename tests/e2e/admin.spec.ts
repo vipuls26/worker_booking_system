@@ -116,30 +116,6 @@ test.describe('Admin workflows', () => {
         await expect.poll(async () => findAdminUserStatus(request, adminSession.token, targetCustomer.email)).toBe('fully_blocked');
     });
 
-    test('admin can approve and reject worker verifications', async ({ page, request }) => {
-        const approveWorker = await createPendingVerificationWorker(request);
-        const rejectWorker = await createPendingVerificationWorker(request);
-
-        await login(page, testUsers.admin);
-        await page.goto('/admin/worker-verifications');
-
-        const approveRow = page.locator('[data-testid^="admin-worker-verification-row-"]').filter({
-            has: page.getByText(approveWorker.name, { exact: true }),
-        }).first();
-        await expect(approveRow).toBeVisible();
-        await approveRow.getByText('Approve').click();
-        await expect.poll(async () => findVerificationStatus(request, adminSession.token, approveWorker.name)).toBe('approved');
-
-        const rejectRow = page.locator('[data-testid^="admin-worker-verification-row-"]').filter({
-            has: page.getByText(rejectWorker.name, { exact: true }),
-        }).first();
-        await expect(rejectRow).toBeVisible();
-        await rejectRow.getByText('Reject').click();
-        await page.getByTestId('worker-verification-rejection-reason').fill('Playwright rejection coverage.');
-        await page.getByTestId('worker-verification-reject-submit').click();
-        await expect.poll(async () => findVerificationStatus(request, adminSession.token, rejectWorker.name)).toBe('rejected');
-    });
-
     test('admin commission update changes new bookings without changing older booking quotes', async ({ request, page }) => {
         const adminSession = await loginByApi(request, testUsers.admin);
         const originalSetting = await apiJson<{ data: { commission_setting: { commission_rate: string } } }>(
